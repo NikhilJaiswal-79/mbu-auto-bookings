@@ -23,18 +23,7 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-gray-950 text-white p-8">
             <div className="max-w-4xl mx-auto">
-                <header className="flex justify-between items-center mb-8">
-                    <div>
-                        <h1 className="text-2xl font-bold">Dashboard</h1>
-                        {userProfile && <p className="text-gray-400 capitalize">Welcome, {userProfile.role} {userProfile.name}</p>}
-                    </div>
-                    <button
-                        onClick={() => logout()}
-                        className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700 transition"
-                    >
-                        Logout
-                    </button>
-                </header>
+                {/* Header Removed as per user request (Logout moved to inner dashboards) */}
 
                 {userProfile?.role === "student" && <StudentDashboard />}
                 {userProfile?.role === "driver" && <DriverDashboard />}

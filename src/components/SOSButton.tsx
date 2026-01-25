@@ -29,6 +29,10 @@ export default function SOSButton({ rideDetails }: { rideDetails?: any }) {
             }, async (error) => {
                 console.error("Geolocation denied/error", error);
                 await sendAlert("Location Unavailable");
+            }, {
+                enableHighAccuracy: true,
+                timeout: 5000, // Timeout after 5 seconds to avoid long waits
+                maximumAge: 0
             });
         } else {
             await sendAlert("Location Not Supported");
@@ -37,53 +41,60 @@ export default function SOSButton({ rideDetails }: { rideDetails?: any }) {
 
     const sendAlert = async (locationLink: string) => {
         try {
-            // Construct Message
-            let message = `🚨 EMERGENCY ALERT: ${userProfile?.name} has triggered an SOS!`;
+            // 1. Log to Firestore FIRST (Critical)
+            const alertData = {
+                userId: user?.uid,
+                userName: userProfile?.name,
+                timestamp: new Date().toISOString(),
+                location: locationLink,
+                rideDetails: rideDetails || null,
+                status: "ACTIVE",
+                emailStatus: "PENDING"
+            };
 
-            if (rideDetails) {
-                message += `\n\nUnknown Ride Details:\nFrom: ${rideDetails.pickup}\nTo: ${rideDetails.drop}\nToken: ${rideDetails.tokenNumber}`;
-                // Add vehicle number if available in rideDetails
-                if (rideDetails.vehicleNumber) message += `\nVehicle: ${rideDetails.vehicleNumber}`;
-            }
+            const docRef = await addDoc(collection(db, "sos_alerts"), alertData);
 
-            message += `\n\n📍 LIVE LOCATION: ${locationLink}`;
-            message += `\n\nPlease call immediately.`;
-
-            // Call API
-            const res = await fetch("/api/sos", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    studentName: userProfile?.name,
-                    studentPhone: userProfile?.phone || "Not Provided",
-                    studentEmail: user?.email, // Fallback for testing if parent email missing
-                    parentPhone: userProfile?.parentContact?.phone,
-                    parentEmail: userProfile?.parentContact?.email, // Assuming this might exist or we use student email for now
-                    location: locationLink,
-                    rideDetails
-                })
-            });
-
-            if (res.ok) {
-                // Save to Firestore for Record
-                await addDoc(collection(db, "sos_alerts"), {
-                    userId: user?.uid,
-                    userName: userProfile?.name,
-                    timestamp: new Date().toISOString(),
-                    location: locationLink,
-                    rideDetails: rideDetails || null,
-                    status: "ACTIVE"
+            // 2. Call Email API
+            let emailSuccess = false;
+            try {
+                const res = await fetch("/api/sos", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        studentName: userProfile?.name,
+                        studentPhone: userProfile?.phone || "Not Provided",
+                        studentEmail: user?.email,
+                        parentPhone: userProfile?.parentContact?.phone,
+                        parentEmail: userProfile?.parentContact?.email,
+                        location: locationLink,
+                        rideDetails
+                    })
                 });
 
-                setTriggered(true);
-                alert("SOS SENT! Parents & Security have been notified.");
-            } else {
-                throw new Error("API Failed");
+                const data = await res.json();
+                if (res.ok) {
+                    emailSuccess = true;
+                    // Update DB status
+                    // Note: We don't need to wait for this update to alert the user
+                    // await updateDoc(docRef, { emailStatus: "SENT" }); 
+                } else {
+                    console.error("SOS API Error:", data.error);
+                    alert(`SOS Recorded, but Email Failed: ${data.error || "Unknown Error"}`);
+                }
+            } catch (apiError) {
+                console.error("SOS Fetch Error:", apiError);
+                alert("SOS Recorded, but Network Request Failed.");
+            }
+
+            setTriggered(true);
+
+            if (emailSuccess) {
+                alert("🚨 SOS SENT! Parents & Security have been notified via Email & Dashboard.");
             }
 
         } catch (error) {
-            console.error("SOS failed", error);
-            alert("Failed to send SOS. Please call 100.");
+            console.error("SOS System Failure", error);
+            alert("CRITICAL FAILURE: Could not log SOS. Use Phone to call 100 immediately.");
         } finally {
             setLoading(false);
         }

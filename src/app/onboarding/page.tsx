@@ -12,6 +12,10 @@ export default function OnboardingPage() {
     const [role, setRole] = useState<"student" | "driver" | null>(null);
     const [submitLoading, setSubmitLoading] = useState(false);
 
+    // Autocomplete State
+    const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [activeField, setActiveField] = useState<"collegeName" | "homeAddress" | null>(null);
+
     // Form State
     const [formData, setFormData] = useState({
         fullName: user?.displayName || "",
@@ -32,6 +36,39 @@ export default function OnboardingPage() {
             router.push("/dashboard");
         }
     }, [user, userProfile, loading, router]);
+
+    // Address Autocomplete (Debounced)
+    useEffect(() => {
+        const query = activeField === "collegeName" ? formData.collegeName :
+            activeField === "homeAddress" ? formData.homeAddress : "";
+
+        if (!query || query.length < 3) {
+            setSuggestions([]);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=5`);
+                const apiData = await res.json();
+                setSuggestions(apiData);
+            } catch (error) {
+                console.error("Autocomplete error", error);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [formData.collegeName, formData.homeAddress, activeField]);
+
+    const handleSelectSuggestion = (suggestion: any) => {
+        if (activeField === "collegeName") {
+            setFormData(prev => ({ ...prev, collegeName: suggestion.display_name }));
+        } else if (activeField === "homeAddress") {
+            setFormData(prev => ({ ...prev, homeAddress: suggestion.display_name }));
+        }
+        setSuggestions([]);
+        setActiveField(null);
+    };
 
     const handleRoleSelect = (selectedRole: "student" | "driver") => {
         setRole(selectedRole);
@@ -143,15 +180,34 @@ export default function OnboardingPage() {
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-400 mb-1">College Name</label>
-                                    <input
-                                        type="text"
-                                        name="collegeName"
-                                        value={formData.collegeName}
-                                        onChange={handleChange}
-                                        required
-                                        placeholder="e.g. MBU, SV University"
-                                        className="w-full bg-gray-800 border-none rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500"
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            name="collegeName"
+                                            value={formData.collegeName}
+                                            onChange={(e) => {
+                                                handleChange(e);
+                                                setActiveField("collegeName");
+                                            }}
+                                            onFocus={() => setActiveField("collegeName")}
+                                            required
+                                            placeholder="e.g. MBU, SV University"
+                                            className="w-full bg-gray-800 border-none rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500"
+                                            autoComplete="off"
+                                        />
+                                        {activeField === "collegeName" && suggestions.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 bg-gray-800 border border-gray-700 rounded-lg mt-1 z-50 shadow-xl max-h-40 overflow-y-auto">
+                                                {suggestions.map((s, i) => (
+                                                    <div key={i}
+                                                        onClick={() => handleSelectSuggestion(s)}
+                                                        className="p-3 hover:bg-gray-700 cursor-pointer text-sm text-gray-300 border-b border-gray-700/50"
+                                                    >
+                                                        {s.display_name}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-400 mb-1">Student ID / Roll No</label>
@@ -167,15 +223,34 @@ export default function OnboardingPage() {
                                 </div>
                                 <div className="col-span-1 md:col-span-2">
                                     <label className="block text-sm font-medium text-gray-400 mb-1">Home Address (Local)</label>
-                                    <input
-                                        type="text"
-                                        name="homeAddress"
-                                        value={formData.homeAddress}
-                                        onChange={handleChange}
-                                        required
-                                        placeholder="e.g. 123, Gandhi Road, Tirupati"
-                                        className="w-full bg-gray-800 border-none rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500"
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            name="homeAddress"
+                                            value={formData.homeAddress}
+                                            onChange={(e) => {
+                                                handleChange(e);
+                                                setActiveField("homeAddress");
+                                            }}
+                                            onFocus={() => setActiveField("homeAddress")}
+                                            required
+                                            placeholder="e.g. 123, Gandhi Road, Tirupati"
+                                            className="w-full bg-gray-800 border-none rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500"
+                                            autoComplete="off"
+                                        />
+                                        {activeField === "homeAddress" && suggestions.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 bg-gray-800 border border-gray-700 rounded-lg mt-1 z-50 shadow-xl max-h-40 overflow-y-auto">
+                                                {suggestions.map((s, i) => (
+                                                    <div key={i}
+                                                        onClick={() => handleSelectSuggestion(s)}
+                                                        className="p-3 hover:bg-gray-700 cursor-pointer text-sm text-gray-300 border-b border-gray-700/50"
+                                                    >
+                                                        {s.display_name}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="pt-4 border-t border-gray-800">
                                     <h3 className="text-sm font-semibold text-gray-300 mb-3">Parent/Guardian Contact</h3>

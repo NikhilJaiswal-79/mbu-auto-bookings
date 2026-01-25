@@ -57,7 +57,11 @@ export async function POST(request: Request) {
 
                 <div style="margin: 20px 0; padding: 15px; background-color: #f9f9f9; text-align: center; border-radius: 5px;">
                     <p style="margin: 0; font-size: 16px;"><strong>📍 LIVE LOCATION:</strong></p>
-                    <p style="margin: 5px 0;"><a href="${location}" target="_blank" style="color: #007bff; text-decoration: none;">Click here to view live location on Google Maps</a></p>
+                    ${location.includes("http")
+                ? `<p style="margin: 5px 0;"><a href="${location}" target="_blank" style="color: #007bff; text-decoration: none;">Click here to view live location on Google Maps</a></p>`
+                : `<p style="margin: 5px 0; color: #d9534f; font-weight: bold;">${location}</p>
+                           <p style="font-size: 12px; color: #777; margin-top: 5px;">*Disclaimer: Device location was not enabled or timed out.*</p>`
+            }
                 </div>
 
                 <hr style="border: 1px dashed #ccc; margin: 20px 0;">
@@ -65,7 +69,7 @@ export async function POST(request: Request) {
                 <h3 style="text-align: center; color: #d9534f;">IMMEDIATE ACTION REQUIRED</h3>
                 <ol>
                     <li>Contact your child immediately at <strong>${studentPhone}</strong>.</li>
-                    <li>If unable to reach your child, contact the driver at <strong>${driverPhone}</strong>.</li>
+
                     <li>If the situation is critical, contact local authorities immediately.</li>
                 </ol>
 

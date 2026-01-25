@@ -1,26 +1,46 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+// 1. Gather all available keys
+const RAW_KEYS = [
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY,
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY_2,
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY_3,
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY_4,
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY_5
+].filter(Boolean) as string[];
 
-if (!API_KEY) {
+// Deduplicate keys just in case
+const API_KEYS = [...new Set(RAW_KEYS)];
+
+if (API_KEYS.length === 0) {
   console.warn("Missing NEXT_PUBLIC_GEMINI_API_KEY in .env.local");
+} else {
+  console.log(`Loaded ${API_KEYS.length} Gemini API Keys for rotation.`);
 }
 
-const genAI = new GoogleGenerativeAI(API_KEY || "");
-
-// DEBUG: Verify Key Loading
-console.log("Gemini API Key Loaded:", API_KEY ? `Starts with ${API_KEY.substring(0, 4)}...` : "NOT LOADED");
+// Track current key index (simple round-robin or failover)
+let currentKeyIndex = 0;
 
 // Use the standard model alias.
-// List of models to try in order of preference
 const MODEL_CANDIDATES = [
   "gemini-2.5-flash"
 ];
 
-// Helper to get a working model (conceptually, we just pick the first one for now, 
-// as true dynamic checking requires async init which is hard in module scope.
-// We will default to the most stable one 'gemini-1.5-flash' but handle errors gracefully).
-const getModel = (modelName: string) => genAI.getGenerativeModel({ model: modelName });
+// Helper to get a model instance with the CURRENT key
+const getModel = (modelName: string) => {
+  if (API_KEYS.length === 0) throw new Error("No API Keys available");
+  const key = API_KEYS[currentKeyIndex];
+  const genAI = new GoogleGenerativeAI(key);
+  return genAI.getGenerativeModel({ model: modelName });
+};
+
+// Helper to rotate key
+const rotateKey = () => {
+  if (API_KEYS.length <= 1) return false; // No other keys to switch to
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+  console.log(`♻️ Switching to API Key #${currentKeyIndex + 1} (Ends with ...${API_KEYS[currentKeyIndex].slice(-4)})`);
+  return true;
+};
 
 // Helper to convert File to Base64
 export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } }> => {
@@ -48,12 +68,59 @@ export interface QuizQuestion {
   explanation: string;
 }
 
+// GENERIC RETRY WRAPPER
+// Wraps any Gemini call with Key Rotation logic
+async function withKeyRotation<T>(
+  operationName: string,
+  operation: (model: any) => Promise<T>
+): Promise<T> {
+  let lastError: any = null;
+
+  // Try each key at least once (or more loops if needed, but let's prevent infinite loops)
+  // We'll allow up to API_KEYS.length + 1 attempts to ensure we try the next ones.
+  const maxAttempts = Math.max(1, API_KEYS.length) * 2;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const modelName = MODEL_CANDIDATES[0]; // Strict 2.5 flash
+
+    try {
+      const model = getModel(modelName);
+      return await operation(model);
+    } catch (error: any) {
+      lastError = error;
+
+      const isQuotaError = error.message?.includes("429") || error.message?.includes("Quota") || error.status === 429;
+
+      if (isQuotaError) {
+        console.warn(`⚠️ Quota hit on Key #${currentKeyIndex + 1} (${API_KEYS[currentKeyIndex]?.slice(-4)}). Attempting rotation...`);
+        const switched = rotateKey();
+        if (!switched) {
+          console.error("❌ No other keys available to rotate.");
+          throw error; // Propagate if we can't switch
+        }
+        // Wait a second before trying the new key to be safe
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // If switched, loop continues and tries new key
+      } else {
+        // If it's NOT a quota error (e.g. 404 Model Not Found, or 500), 
+        // strictly speaking we might not want to rotate, but for robustness let's try ONE rotation just in case key is bad.
+        // But if user requested STRICT rotation only on exhaustion, we focus on 429.
+        // For now, let's throw on non-quota errors to fail fast (like Model Not Found).
+        console.error(`❌ Non-Quota Error on Key #${currentKeyIndex + 1}: ${error.message}`);
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 export const generateQuizQuestion = async (
   language: string,
   context: string,
   difficulty: string
 ): Promise<QuizQuestion> => {
-  if (!API_KEY) {
+  if (API_KEYS.length === 0) {
     return {
       question: "Gemini API Key Missing.",
       options: ["Error", "Error", "Error", "Error"],
@@ -65,42 +132,27 @@ export const generateQuizQuestion = async (
   const prompt = `Generate a single multiple-choice question (MCQ) about ${language} programming, specifically focusing on ${context}, at a ${difficulty} difficulty level.
   Return strictly valid JSON: { "question": "...", "options": ["...", "...", "...", "..."], "correctIndex": 0, "explanation": "..." }. No markdown.`;
 
-  // Try models sequentially
-  for (const modelName of MODEL_CANDIDATES) {
-    try {
-      console.log(`Attempting quiz generation with model: ${modelName}`);
-      const model = getModel(modelName);
+  try {
+    return await withKeyRotation("Quiz Generation", async (model) => {
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
       return JSON.parse(text) as QuizQuestion;
-    } catch (error: any) {
-      console.warn(`Model ${modelName} failed:`, error.message);
-      // If it's the last model, throw or return error
-      if (modelName === MODEL_CANDIDATES[MODEL_CANDIDATES.length - 1]) {
-        console.error("All models failed.");
-        return {
-          question: "AI Service Unavailable (Check API Key/Region)",
-          options: ["Retry", "Retry", "Retry", "Retry"],
-          correctIndex: 0,
-          explanation: `Error: ${error.message}`
-        };
-      }
-      // Otherwise continue to next model
-    }
+    });
+  } catch (error: any) {
+    console.error("All Retry Attempts Failed:", error);
+    return {
+      question: "AI Error: " + error.message,
+      options: ["Retry", "Retry", "Retry", "Retry"],
+      correctIndex: 0,
+      explanation: `Debug Info: All ${API_KEYS.length} keys failed. Last Code: ${error.status || 'Unknown'}`
+    };
   }
-
-  return {
-    question: "Unknown Error",
-    options: ["Error", "Error", "Error", "Error"],
-    correctIndex: 0,
-    explanation: "An unknown error occurred."
-  };
 };
 
 // Vision: Extract Timetable
 export const extractTimetable = async (file: File) => {
-  if (!API_KEY) throw new Error("Key Missing");
+  if (API_KEYS.length === 0) throw new Error("Key Missing");
 
   const imagePart = await fileToGenerativePart(file);
   const prompt = `Analyze this college timetable image. For each day of the week, determine the "College Start Time" (the time of the very first class) and the "College End Time" (the time the last class ends).
@@ -117,53 +169,35 @@ export const extractTimetable = async (file: File) => {
   2. If a day has NO classes (e.g. Sunday), omit it.
   3. No Markdown code blocks.`;
 
-  // Try models sequentially
-  for (const modelName of MODEL_CANDIDATES) {
-    try {
-      console.log(`Attempting vision extraction with model: ${modelName}`);
-      const model = getModel(modelName);
+  try {
+    return await withKeyRotation("Timetable Extraction", async (model) => {
       const result = await model.generateContent([prompt, imagePart]);
-      const response = await result.response;
-
-      // Check for empty response or safety blocks
-      if (!response.candidates || response.candidates.length === 0) {
-        throw new Error("No candidates returned from Gemini");
-      }
-
-      const text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
-      if (!text) throw new Error("Empty response text (possible safety block)");
-
-      try {
-        return JSON.parse(text);
-      } catch (jsonError) {
-        console.error("JSON Parse Error:", jsonError, "Raw Text:", text);
-        throw new Error("Failed to parse Gemini response as JSON");
-      }
-    } catch (error: any) {
-      console.warn(`Vision Model ${modelName} failed:`, error.message);
-      if (modelName === MODEL_CANDIDATES[MODEL_CANDIDATES.length - 1]) throw error;
-    }
+      const text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+      return JSON.parse(text);
+    });
+  } catch (error: any) {
+    console.error("Timetable Extraction Failed:", error);
+    throw error;
   }
 };
 
 // Vision: Extract Holidays
 export const extractHolidays = async (file: File) => {
-  if (!API_KEY) throw new Error("Key Missing");
+  if (API_KEYS.length === 0) throw new Error("Key Missing");
 
   const imagePart = await fileToGenerativePart(file);
   const prompt = `Extract holiday dates from this calendar image.
     Return JSON array: [{ "date": "YYYY-MM-DD", "name": "Holiday Name" }]. 
     No markdown.`;
 
-  for (const modelName of MODEL_CANDIDATES) {
-    try {
-      const model = getModel(modelName);
+  try {
+    return await withKeyRotation("Holiday Extraction", async (model) => {
       const result = await model.generateContent([prompt, imagePart]);
       const text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
       return JSON.parse(text);
-    } catch (error: any) {
-      console.warn(`Vision Model ${modelName} failed:`, error.message);
-      if (modelName === MODEL_CANDIDATES[MODEL_CANDIDATES.length - 1]) throw error;
-    }
+    });
+  } catch (error: any) {
+    console.error("Holiday Extraction Failed:", error);
+    throw error;
   }
 };

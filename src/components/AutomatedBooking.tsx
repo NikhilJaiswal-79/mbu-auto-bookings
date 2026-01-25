@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { extractTimetable, extractHolidays } from "@/lib/gemini";
+import { checkAndTriggerAutoBooking, resetDailyLog } from "@/lib/bookingAgent"; // New Agent
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
@@ -106,12 +107,71 @@ export default function AutomatedBooking() {
         } catch (e) { console.error(e); }
     };
 
+    const handleTestAgent = async () => {
+        if (!user) return;
+        const result = await checkAndTriggerAutoBooking(user);
+        if (result?.success) {
+            alert("✅ Agent Success: " + result.message);
+        } else if (result?.skipped) {
+            alert("ℹ️ Agent Skipped: " + result.reason);
+        } else if (result?.error) {
+            alert("❌ Agent Error: " + result.error);
+        }
+    };
+
+    const handleResetAgent = async () => {
+        if (!user) return;
+        const result = await resetDailyLog(user);
+        if (result?.success) {
+            alert("🧹 Memory Cleared! You can force run again.");
+        } else {
+            alert("Error clearing memory.");
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-900 to-indigo-900 p-8 rounded-3xl text-center shadow-2xl border border-blue-800">
-                <h2 className="text-3xl font-black text-white mb-2">Timetable & Auto-Booking 📅</h2>
-                <p className="text-blue-200">Upload your timetable and let AI manage your rides.</p>
+            <div className="bg-gradient-to-r from-blue-900 to-indigo-900 p-8 rounded-3xl text-center shadow-2xl border border-blue-800 relative overflow-hidden">
+                <div className="relative z-10">
+                    <h2 className="text-3xl font-black text-white mb-2">Timetable & Auto-Booking 📅</h2>
+                    <p className="text-blue-200 mb-6">Upload your timetable and let AI manage your rides.</p>
+
+                    {/* Agent Status Panel */}
+                    <div className="bg-black/30 backdrop-blur-md rounded-xl p-4 max-w-md mx-auto border border-blue-500/30 flex flex-col gap-4">
+                        <div className="flex items-center justify-between">
+                            <div className="text-left">
+                                <div className="text-xs text-blue-300 font-bold uppercase tracking-wider">Agent Status</div>
+                                <div className="flex items-center gap-2">
+                                    <span className="relative flex h-3 w-3">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                                    </span>
+                                    <span className="text-white font-bold">Active (Checks at 8 PM)</span>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleResetAgent}
+                                    className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition-transform active:scale-95"
+                                    title="Clear 'Already Booked' Log"
+                                >
+                                    🧹 Reset
+                                </button>
+                                <button
+                                    onClick={handleTestAgent}
+                                    className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition-transform active:scale-95"
+                                >
+                                    ⚡ Force Run
+                                </button>
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-400 text-left">
+                            * Uses "Tomorrow's" schedule. If today is booked, verify in Dashboard.
+                            <br />* <b>Tip:</b> If it says "Already booked", click Reset to try again.
+                        </p>
+                    </div>
+                </div>
 
                 {/* Tabs */}
                 <div className="flex justify-center gap-2 mt-8 bg-black/20 p-1 rounded-xl w-fit mx-auto backdrop-blur-sm">
@@ -162,31 +222,36 @@ export default function AutomatedBooking() {
                     {timetable && (
                         <div className="space-y-4">
                             <h3 className="text-lg font-bold text-gray-400 uppercase tracking-wider">📅 Weekly Schedule</h3>
-                            {Object.entries(timetable).map(([day, timings]: [string, any]) => (
-                                <div key={day} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex justify-between items-center transition-colors hover:border-blue-500/50">
-                                    <h4 className="text-xl font-bold text-white w-32">{day}</h4>
+                            {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                                .filter(day => timetable[day])
+                                .map((day) => {
+                                    const timings = timetable[day];
+                                    return (
+                                        <div key={day} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex justify-between items-center transition-colors hover:border-blue-500/50">
+                                            <h4 className="text-xl font-bold text-white w-32">{day}</h4>
 
-                                    <div className="flex items-center gap-8 flex-1 justify-center">
-                                        {/* Start Time */}
-                                        <div className="text-center group">
-                                            <div className="text-xs text-gray-500 mb-1 uppercase tracking-widest group-hover:text-green-400 transition-colors">College Start</div>
-                                            <div className="text-2xl font-black text-green-400 bg-green-900/10 px-4 py-2 rounded-xl border border-green-500/20">
-                                                {timings.start}
+                                            <div className="flex items-center gap-8 flex-1 justify-center">
+                                                {/* Start Time */}
+                                                <div className="text-center group">
+                                                    <div className="text-xs text-gray-500 mb-1 uppercase tracking-widest group-hover:text-green-400 transition-colors">College Start</div>
+                                                    <div className="text-2xl font-black text-green-400 bg-green-900/10 px-4 py-2 rounded-xl border border-green-500/20">
+                                                        {timings.start}
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-gray-600 text-2xl font-light">➜</div>
+
+                                                {/* End Time */}
+                                                <div className="text-center group">
+                                                    <div className="text-xs text-gray-500 mb-1 uppercase tracking-widest group-hover:text-red-400 transition-colors">College End</div>
+                                                    <div className="text-2xl font-black text-red-400 bg-red-900/10 px-4 py-2 rounded-xl border border-red-500/20">
+                                                        {timings.end}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-
-                                        <div className="text-gray-600 text-2xl font-light">➜</div>
-
-                                        {/* End Time */}
-                                        <div className="text-center group">
-                                            <div className="text-xs text-gray-500 mb-1 uppercase tracking-widest group-hover:text-red-400 transition-colors">College End</div>
-                                            <div className="text-2xl font-black text-red-400 bg-red-900/10 px-4 py-2 rounded-xl border border-red-500/20">
-                                                {timings.end}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                                    );
+                                })}
                         </div>
                     )}
                 </div>
@@ -263,9 +328,119 @@ export default function AutomatedBooking() {
                 </div>
             )}
 
-            {activeTab === "settings" && (
-                <div className="text-center text-gray-500 py-12">Settings coming soon...</div>
-            )}
+            {activeTab === "settings" && <SettingsView />}
+        </div>
+    );
+}
+
+// Settings Component
+function SettingsView() {
+    const { user } = useAuth();
+    const [settings, setSettings] = useState({
+        morningOffset: 30,
+        eveningOffset: 15,
+        defaultPayment: "Cash/Online",
+        autoBookingEnabled: false
+    });
+    const [loading, setLoading] = useState(false);
+
+    // Fetch Settings
+    useEffect(() => {
+        if (user) {
+            getDoc(doc(db, "users", user.uid)).then(d => {
+                if (d.exists() && d.data().autoBookingSettings) {
+                    setSettings(d.data().autoBookingSettings);
+                }
+            });
+        }
+    }, [user]);
+
+    const handleSave = async () => {
+        if (!user) return;
+        setLoading(true);
+        try {
+            await updateDoc(doc(db, "users", user.uid), {
+                autoBookingSettings: settings
+            });
+            alert("Settings Saved Successfully!");
+        } catch (error) {
+            console.error(error);
+            alert("Failed to save settings.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl animate-fade-in max-w-2xl mx-auto">
+            <h3 className="text-xl font-bold text-white mb-2">Auto-Booking Settings</h3>
+            <p className="text-gray-400 text-sm mb-6">Configure when autos should arrive and your payment preferences</p>
+
+            <div className="space-y-6">
+                {/* Morning Offset */}
+                <div>
+                    <label className="block text-sm font-bold text-gray-300 mb-2">Morning Ride Offset (minutes before first class)</label>
+                    <input
+                        type="number"
+                        value={settings.morningOffset}
+                        onChange={(e) => setSettings({ ...settings, morningOffset: Number(e.target.value) })}
+                        className="w-full bg-gray-800 text-white p-3 rounded-xl border border-gray-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+                    />
+                    <p className="text-gray-500 text-xs mt-1">Auto will arrive this many minutes before your first class</p>
+                </div>
+
+                {/* Evening Offset */}
+                <div>
+                    <label className="block text-sm font-bold text-gray-300 mb-2">Evening Ride Offset (minutes after last class)</label>
+                    <input
+                        type="number"
+                        value={settings.eveningOffset}
+                        onChange={(e) => setSettings({ ...settings, eveningOffset: Number(e.target.value) })}
+                        className="w-full bg-gray-800 text-white p-3 rounded-xl border border-gray-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+                    />
+                    <p className="text-gray-500 text-xs mt-1">Auto will arrive this many minutes after your last class</p>
+                </div>
+
+                {/* Payment Method */}
+                <div>
+                    <label className="block text-sm font-bold text-gray-300 mb-2">Default Payment Method</label>
+                    <div className="relative">
+                        <select
+                            value={settings.defaultPayment}
+                            onChange={(e) => setSettings({ ...settings, defaultPayment: e.target.value })}
+                            className="w-full bg-gray-800 text-white p-3 rounded-xl border border-gray-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+                        >
+                            <option value="Cash/Online">Cash/Online</option>
+                            <option value="Credits">Credits</option>
+                            <option value="Subscription">Subscription</option>
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                    </div>
+                </div>
+
+                {/* Auto Booking Toggle */}
+                <div className="flex items-center gap-3 pt-2">
+                    <input
+                        type="checkbox"
+                        id="autoBooking"
+                        checked={settings.autoBookingEnabled}
+                        onChange={(e) => setSettings({ ...settings, autoBookingEnabled: e.target.checked })}
+                        className="w-5 h-5 rounded bg-gray-800 border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+                    />
+                    <label htmlFor="autoBooking" className="text-white font-bold cursor-pointer select-none">
+                        Enable automatic booking
+                    </label>
+                </div>
+
+                {/* Save Button */}
+                <button
+                    onClick={handleSave}
+                    disabled={loading}
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl mt-4 transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {loading ? "Saving..." : "Save Settings"}
+                </button>
+            </div>
         </div>
     );
 }

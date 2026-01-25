@@ -12,6 +12,7 @@ interface UserProfile {
     phone?: string;
     collegeName?: string;
     homeAddress?: string;
+    vehicleNumber?: string;
     parentContact?: {
         name: string;
         phone: string;
