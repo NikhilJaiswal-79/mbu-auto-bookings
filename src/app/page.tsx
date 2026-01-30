@@ -13,7 +13,8 @@ import {
   BarChart3,
   ArrowRight,
   Menu,
-  X
+  X,
+  ShieldAlert
 } from "lucide-react";
 
 export default function LandingPage() {
@@ -68,6 +69,11 @@ export default function LandingPage() {
       icon: <BarChart3 className="w-8 h-8 text-indigo-400" />,
       title: "Driver Earnings Analysis",
       desc: "Drivers get clear insights into their daily and weekly earnings. Track performance, plan ahead, and optimize your rides for better income."
+    },
+    {
+      icon: <ShieldAlert className="w-8 h-8 text-red-500" />,
+      title: "SOS Safety Feature",
+      desc: "Student safety comes first. With the SOS feature, students can instantly send an emergency alert during a ride. The alert notifies pre-saved emergency contacts (such as parents or guardians) and shares live ride details, driver information, and real-time location. Quick access ensures help is just one tap away when it matters most."
     }
   ];
 

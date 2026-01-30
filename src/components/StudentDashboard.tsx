@@ -9,9 +9,9 @@ import { generateToken, subscribeToServingToken } from "@/lib/tokenService";
 import { checkAndTriggerAutoBooking } from "@/lib/bookingAgent"; // 1. Import checkAndTriggerAutoBooking
 import RideSharing from "./RideSharing";
 import AutomatedBooking from "./AutomatedBooking";
-import WeatherWidget from "./WeatherWidget";
+
 import SOSButton from "./SOSButton";
-import QuizComponent from "./QuizComponent";
+
 import { NotificationToast, ToastType } from "./NotificationToast";
 
 import dynamic from "next/dynamic";
@@ -992,11 +992,11 @@ export default function StudentDashboard() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* <QuizComponent isActive={true} /> */}
+                <div className="max-w-2xl mx-auto space-y-6">
+                    {/* Quiz Component Removed */}
                     <div className="space-y-6">
                         <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
-                            <h3 className="text-lg font-bold text-white mb-4">Ride Controls</h3>
+                            <h3 className="text-lg font-bold text-center text-white mb-4">Ride Controls</h3>
                             <button
                                 onClick={handleEndRide}
                                 className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-xl border border-gray-700 transition-all shadow-lg active:scale-95"
@@ -1488,6 +1488,9 @@ export default function StudentDashboard() {
                     </div>
                 </div>
                 <div className="flex gap-2">
+                    <button onClick={() => window.location.href = '/'} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 border border-gray-700">
+                        Home
+                    </button>
                     <button onClick={() => setActiveTab("home")} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-500/20">
                         Dashboard
                     </button>
@@ -1497,12 +1500,12 @@ export default function StudentDashboard() {
                     >
                         Timetable
                     </button>
-                    {/* <button
+                    <button
                         onClick={() => setActiveTab('share')}
                         className="bg-green-700 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 shadow-lg shadow-green-500/20"
                     >
                         Ride Share
-                    </button> */}
+                    </button>
                     {/* Logout Button Restored */}
                     <button
                         onClick={() => logout()}
@@ -1516,7 +1519,7 @@ export default function StudentDashboard() {
             {/* DASHBOARD OVERVIEW (HOME) */}
             {activeTab === "home" && (
                 <div className="space-y-8 animate-slide-up">
-                    <WeatherWidget />
+
 
                     {/* Wallet & Credits Cards (Moved Above Quick Actions) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
@@ -1567,12 +1570,12 @@ export default function StudentDashboard() {
                             </div>
                             <span className="font-semibold text-gray-300 group-hover:text-white">My Profile</span>
                         </button>
-                        {/* <button onClick={() => setShowLostFoundModal(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group col-span-2 md:col-span-1">
+                        <button onClick={() => setShowLostFoundModal(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group col-span-2 md:col-span-1">
                             <div className="w-12 h-12 bg-pink-900/30 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
                                 <span className="text-2xl">🔍</span>
                             </div>
                             <span className="font-semibold text-gray-300 group-hover:text-white">Lost & Found</span>
-                        </button> */}
+                        </button>
                     </div>
                 </div >
             )

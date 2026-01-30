@@ -62,13 +62,6 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
   });
 };
 
-export interface QuizQuestion {
-  question: string;
-  options: string[];
-  correctIndex: number;
-  explanation: string;
-}
-
 // GENERIC RETRY WRAPPER
 // Wraps any Gemini call with Key Rotation logic AND Model Fallback
 async function withKeyRotation<T>(
@@ -124,40 +117,6 @@ async function withKeyRotation<T>(
 }
 
 
-export const generateQuizQuestion = async (
-  language: string,
-  context: string,
-  difficulty: string
-): Promise<QuizQuestion> => {
-  if (API_KEYS.length === 0) {
-    return {
-      question: "Gemini API Key Missing.",
-      options: ["Error", "Error", "Error", "Error"],
-      correctIndex: 0,
-      explanation: "Please check .env.local"
-    };
-  }
-
-  const prompt = `Generate a single multiple-choice question (MCQ) about ${language} programming, specifically focusing on ${context}, at a ${difficulty} difficulty level.
-  Return strictly valid JSON: { "question": "...", "options": ["...", "...", "...", "..."], "correctIndex": 0, "explanation": "..." }. No markdown.`;
-
-  try {
-    return await withKeyRotation("Quiz Generation", async (model) => {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
-      return JSON.parse(text) as QuizQuestion;
-    });
-  } catch (error: any) {
-    console.error("All Retry Attempts Failed:", error);
-    return {
-      question: "AI Error: " + error.message,
-      options: ["Retry", "Retry", "Retry", "Retry"],
-      correctIndex: 0,
-      explanation: `Debug Info: All ${API_KEYS.length} keys failed. Last Code: ${error.status || 'Unknown'}`
-    };
-  }
-};
 
 // Vision: Extract Timetable
 export const extractTimetable = async (file: File) => {
