@@ -396,7 +396,7 @@ export default function RideSharing() {
                                         </div>
                                         <span className="text-sm text-gray-300">{ride.hostName}</span>
                                     </div>
-                                    <button onClick={() => handleJoinRide(ride.id, ride.seatsAvailable, ride.phoneNumber)} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-lg shadow-purple-900/20 transition-all hover:scale-105 active:scale-95">
+                                    <button onClick={() => ride.id && handleJoinRide(ride.id, ride.seatsAvailable, ride.phoneNumber)} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-lg shadow-purple-900/20 transition-all hover:scale-105 active:scale-95">
                                         Request Seat
                                     </button>
                                 </div>

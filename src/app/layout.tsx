@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MBU Auto Booking Platform",
-  description: "Transportation platform for MBU students",
+  title: "CampusRide",
+  description: "Smart transportation for your campus",
 };
 
 export default function RootLayout({

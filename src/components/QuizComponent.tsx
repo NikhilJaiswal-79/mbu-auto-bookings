@@ -83,7 +83,7 @@ export default function QuizComponent({ isActive = true }: QuizComponentProps) {
         }
     };
 
-    const handleSubmitAnswer = () => {
+    const handleSubmitAnswer = async () => {
         if (selectedOption === null || !currentQuestion) return;
 
         // Record history
@@ -103,17 +103,20 @@ export default function QuizComponent({ isActive = true }: QuizComponentProps) {
         } else {
             // If buffer empty (rare), show loading
             setLoading(true);
-            fetchQuestionInternal().then(q => {
-                if (q) {
-                    setCurrentQuestion(q);
-                    setQuestionNumber(prev => prev + 1);
-                }
-                setLoading(false);
-                // Start filling buffer again
-                setTimeout(() => {
-                    fetchQuestionInternal().then(nq => setNextQuestion(nq));
-                }, 6000); // 6s Delay to respect Rate Limit
-            });
+            const q = await fetchQuestionInternal();
+
+            if (q) {
+                setCurrentQuestion(q);
+                setQuestionNumber(prev => prev + 1);
+            }
+
+            setLoading(false);
+            // Start filling buffer again
+            setTimeout(() => {
+                fetchQuestionInternal().then(nq => {
+                    if (nq) setNextQuestion(nq);
+                });
+            }, 6000); // 6s Delay to respect Rate Limit
         }
     };
 
