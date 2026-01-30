@@ -1500,12 +1500,12 @@ export default function StudentDashboard() {
                     >
                         Timetable
                     </button>
-                    <button
+                    {/* <button
                         onClick={() => setActiveTab('share')}
                         className="bg-green-700 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 shadow-lg shadow-green-500/20"
                     >
                         Ride Share
-                    </button>
+                    </button> */}
                     {/* Logout Button Restored */}
                     <button
                         onClick={() => logout()}
@@ -1570,12 +1570,12 @@ export default function StudentDashboard() {
                             </div>
                             <span className="font-semibold text-gray-300 group-hover:text-white">My Profile</span>
                         </button>
-                        <button onClick={() => setShowLostFoundModal(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group col-span-2 md:col-span-1">
+                        {/* <button onClick={() => setShowLostFoundModal(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group col-span-2 md:col-span-1">
                             <div className="w-12 h-12 bg-pink-900/30 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
                                 <span className="text-2xl">🔍</span>
                             </div>
                             <span className="font-semibold text-gray-300 group-hover:text-white">Lost & Found</span>
-                        </button>
+                        </button> */}
                     </div>
                 </div >
             )

@@ -50,26 +50,26 @@ export default function LandingPage() {
       title: "Token System & Emergency Ride",
       desc: "Every student receives a token number when requesting a ride, forming a fair, queue-based system for bookings. The app shows the current serving token in real time, so students know exactly when their turn is coming. Emergency rides are also available to ensure you’re never stranded when you need to reach somewhere urgently or if you’re running late."
     },
-    {
-      icon: <Search className="w-8 h-8 text-orange-400" />,
-      title: "Lost & Found",
-      desc: "Report or claim lost items effortlessly through the app. Students and drivers can securely coordinate to recover belongings quickly and safely."
-    },
+    // {
+    //   icon: <Search className="w-8 h-8 text-orange-400" />,
+    //   title: "Lost & Found",
+    //   desc: "Report or claim lost items effortlessly through the app. Students and drivers can securely coordinate to recover belongings quickly and safely."
+    // },
     {
       icon: <Mic className="w-8 h-8 text-red-400" />,
       title: "MIC Booking",
       desc: "Book rides instantly using voice commands. Perfect for hands-free, on-the-go access, ensuring you never miss a ride when you’re in a hurry."
     },
-    {
-      icon: <UserPlus className="w-8 h-8 text-pink-400" />,
-      title: "Ride with Friends",
-      desc: "Invite your friends to join your ride and travel together in the same auto—even if your homes are in different locations. The app plans the route so everyone can be picked up directly from their doorstep. Safe, fun, and convenient—group travel has never been easier."
-    },
-    {
-      icon: <BarChart3 className="w-8 h-8 text-indigo-400" />,
-      title: "Driver Earnings Analysis",
-      desc: "Drivers get clear insights into their daily and weekly earnings. Track performance, plan ahead, and optimize your rides for better income."
-    },
+    // {
+    //   icon: <UserPlus className="w-8 h-8 text-pink-400" />,
+    //   title: "Ride with Friends",
+    //   desc: "Invite your friends to join your ride and travel together in the same auto—even if your homes are in different locations. The app plans the route so everyone can be picked up directly from their doorstep. Safe, fun, and convenient—group travel has never been easier."
+    // },
+    // {
+    //   icon: <BarChart3 className="w-8 h-8 text-indigo-400" />,
+    //   title: "Driver Earnings Analysis",
+    //   desc: "Drivers get clear insights into their daily and weekly earnings. Track performance, plan ahead, and optimize your rides for better income."
+    // },
     {
       icon: <ShieldAlert className="w-8 h-8 text-red-500" />,
       title: "SOS Safety Feature",
