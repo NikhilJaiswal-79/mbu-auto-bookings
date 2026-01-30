@@ -2,8 +2,9 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
-import { collection, addDoc, onSnapshot, doc, query, where, orderBy, updateDoc, increment } from "firebase/firestore";
+import { collection, addDoc, query, where, onSnapshot, orderBy, updateDoc, doc, increment, runTransaction } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+
 import { generateToken, subscribeToServingToken } from "@/lib/tokenService";
 import { checkAndTriggerAutoBooking } from "@/lib/bookingAgent"; // 1. Import checkAndTriggerAutoBooking
 import RideSharing from "./RideSharing";
@@ -17,26 +18,210 @@ import dynamic from "next/dynamic";
 
 const MapComponent = dynamic(() => import("./MapComponent"), { ssr: false });
 
+import VoiceBookingAgent from "./VoiceBookingAgent";
+
 export default function StudentDashboard() {
     const { user, userProfile, logout } = useAuth();
     const [activeTab, setActiveTab] = useState<"home" | "auto" | "share" | "timetable">("home");
     const [showBookingModal, setShowBookingModal] = useState(false);
 
+    // Voice Command State
+    const [showVoiceModal, setShowVoiceModal] = useState(false);
+    const [voiceData, setVoiceData] = useState<any>(null);
+
+    const handleVoiceParsed = (data: any) => {
+        console.log("🎤 Voice Data Parsed:", data);
+
+        // 1. Address Resolution Fix: explicitly match "Home", "College", etc.
+        let resolvedPickup = data.pickup;
+        let resolvedDrop = data.drop;
+
+        if (savedAddresses.length > 0) {
+            console.log("🔍 Attempting Address Resolution. Inputs:", { pickup: data.pickup, drop: data.drop });
+            console.log("📂 Saved Addresses:", savedAddresses);
+
+            // Try to resolve Pickup
+            const cleanPickup = data.pickup?.toLowerCase().trim();
+            const matchedPickup = savedAddresses.find(addr =>
+                addr.name?.toLowerCase().trim() === cleanPickup ||
+                addr.type?.toLowerCase().trim() === cleanPickup
+            );
+            if (matchedPickup) {
+                console.log("✅ Resolved Pickup:", matchedPickup.address);
+                resolvedPickup = matchedPickup.address;
+            }
+
+            // Try to resolve Drop
+            const cleanDrop = data.drop?.toLowerCase().trim();
+            const matchedDrop = savedAddresses.find(addr =>
+                addr.name?.toLowerCase().trim() === cleanDrop ||
+                addr.type?.toLowerCase().trim() === cleanDrop
+            );
+            if (matchedDrop) {
+                console.log("✅ Resolved Drop:", matchedDrop.address);
+                resolvedDrop = matchedDrop.address;
+            }
+        }
+
+        // 2. Update Data with Resolved Addresses
+        const refinedData = {
+            ...data,
+            pickup: resolvedPickup,
+            drop: resolvedDrop
+        };
+
+        setVoiceData(refinedData);
+        setShowVoiceModal(true);
+    };
+
+    const confirmVoiceBooking = async () => {
+        if (!voiceData) return;
+
+        // Apply voice data to main state
+        setPickup(voiceData.pickup || "Current Location");
+        setDrop(voiceData.drop || "");
+        setRideType(voiceData.rideType || "instant");
+
+        if (voiceData.rideType === "scheduled" && voiceData.scheduledTime) {
+            setScheduledTime(voiceData.scheduledTime);
+            // Default to today if date not mentioned, or handle date parsing later
+            setScheduledDate(new Date().toISOString().split('T')[0]);
+        }
+
+        // Close modal
+        setShowVoiceModal(false);
+
+        // Trigger Booking (slight delay to allow state update? Or pass directly?)
+        // Better to set state, then Trigger manually or Auto? 
+        // User asked: "auto should be booked accordingly... before booking just confirm"
+        // So hitting "Confirm" here should ideally start the booking process.
+
+        // Let's call a slightly modified booking handler or just rely on state update and user hitting "Book"?
+        // Actually, user expects "auto should be booked". Let's try to trigger it.
+        // But handleBookRide relies on state `pickup`, `drop`. 
+        // We can pass arguments to handleBookRide or modify it. 
+        // Easier: Just pre-fill and let them hit "Book Now" ? 
+        // prompt says "autombooked accordingly... before booking just confirm". 
+        // So the flow: Voice -> Modal (Confirm?) -> Booking.
+
+        // Let's defer specific booking call to ensure state is set, OR call internal book function with data.
+        // For safety, let's call the internal booking logic with explicit data if possible, 
+        // or just set state and show the standard booking modal?
+        // Let's set state and OPEN the standard booking modal if it wasn't open, 
+        // OR if we want 1-click:
+
+        // Hack: We need a way to reuse handleBookRide logic with specific values. 
+        // For now, let's Use the "Show Booking Modal" approach but pre-filled.
+        // Or better: Direct Booking if confirmed.
+
+        // Let's try direct booking by calling a helper
+        executeVoiceBooking(voiceData);
+    };
+
+    const executeVoiceBooking = async (data: any) => {
+        // Payment Logic: Explicit Voice Command > Hierarchy (Sub > Credits > Cash)
+        let finalPaymentMode = "cash";
+
+        if (data.paymentMode) {
+            finalPaymentMode = data.paymentMode; // User explicitly asked
+        } else {
+            // Default Hierarchy
+            finalPaymentMode = subscription?.active ? "subscription" : (credits > 0 ? "credits" : "cash");
+        }
+
+        // Safety Check: If user asked for subscription but has none
+        if (finalPaymentMode === "subscription" && !subscription?.active) {
+            showToast("No active subscription. Falling back to default.", "info");
+            finalPaymentMode = credits > 0 ? "credits" : "cash";
+        }
+
+        setLoading(true);
+        setLoading(true);
+        try {
+            const tokenNumber = await generateToken();
+            setMyToken(tokenNumber);
+
+            // Check Emergency Limit
+            if (isEmergency && emergencyUsage >= 5) {
+                showToast("Monthly emergency limit reached (5/5).", "error");
+                setLoading(false);
+                return;
+            }
+            // Validation Only: Check if user has credits (but DO NOT deduct yet)
+            if (finalPaymentMode === "credits") {
+                if (credits < 1) {
+                    showToast("Insufficient credits to book.", "error");
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            const rideData = {
+                studentId: user?.uid,
+                studentName: userProfile?.name || "Student",
+                pickup: data.pickup || "Current Location",
+                drop: data.drop,
+                rideType: data.rideType || "instant",
+                scheduledDate: data.rideType === "scheduled" ? (new Date().toISOString().split('T')[0]) : null, // Default Today
+                scheduledTime: data.scheduledTime || null,
+                paymentMode: finalPaymentMode,
+                status: "PENDING",
+                createdAt: new Date().toISOString(),
+                tokenNumber: 0, // Should be generated token? Yes.
+                studentPhone: userProfile?.phone || "Not Provided",
+                isEmergency: false
+            };
+
+            // Fix Token (using same logic as handleBookRide)
+            rideData.tokenNumber = tokenNumber;
+
+            const docRef = await addDoc(collection(db, "bookings"), rideData);
+            setCurrentBookingId(docRef.id);
+
+            // Sync Local State for UI
+            setPaymentMode(finalPaymentMode as any);
+            setRideType(rideData.rideType as any); // Ensure type is synced
+            if (rideData.scheduledDate) setScheduledDate(rideData.scheduledDate);
+            if (rideData.scheduledTime) setScheduledTime(rideData.scheduledTime);
+
+            setBookingStatus("PENDING");
+            setShowVoiceModal(false);
+
+        } catch (e) {
+            console.error(e);
+            showToast("Voice Booking Failed", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
+    {/* Existing content... */ }
+    {/* ... */ }
+
+
     // Address & Pricing State
     const [suggestions, setSuggestions] = useState<any[]>([]);
-    const [activeField, setActiveField] = useState<"pickup" | "drop" | "collegeName" | "homeAddress" | null>(null);
+    const [activeField, setActiveField] = useState<"pickup" | "drop" | "collegeName" | "homeAddress" | "newAddress" | null>(null);
     const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+
+    // Coordinates State
+    const [pickupCoords, setPickupCoords] = useState<{ lat: number, lng: number } | null>(null);
+    const [dropCoords, setDropCoords] = useState<{ lat: number, lng: number } | null>(null);
+
     const [showSaveAddressModal, setShowSaveAddressModal] = useState(false);
     const [newAddress, setNewAddress] = useState({
         type: "Home",
         customName: "",
         address: "",
-        landmark: ""
+        landmark: "",
+        lat: 0,
+        lng: 0
     });
     const [estimatedFare, setEstimatedFare] = useState(25);
 
     // Auto Booking State (Needed for handlers)
-    const [pickup, setPickup] = useState(""); // 5. Empty initial state
+    const [pickup, setPickup] = useState("");
     const [drop, setDrop] = useState("");
     const [rideType, setRideType] = useState<"instant" | "scheduled">("instant");
     const [paymentMode, setPaymentMode] = useState<"cash" | "credits" | "subscription">("cash");
@@ -66,6 +251,52 @@ export default function StudentDashboard() {
     // Address Modal State
     const [addressModalView, setAddressModalView] = useState<"list" | "add">("list");
     const [deletingIndex, setDeletingIndex] = useState<number | null>(null); // For inline delete confirmation
+
+    // Lost & Found State
+    const [showLostFoundModal, setShowLostFoundModal] = useState(false);
+    const [lostItemDesc, setLostItemDesc] = useState("");
+    const [lostItemName, setLostItemName] = useState("");
+    const [selectedLostRide, setSelectedLostRide] = useState<string | null>(null);
+    const [myLostReports, setMyLostReports] = useState<any[]>([]);
+
+    // Emergency Limit State
+    const [emergencyUsage, setEmergencyUsage] = useState(0);
+
+    useEffect(() => {
+        if (!user) return;
+
+        // Calculate start of current month
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+        const q = query(
+            collection(db, "bookings"),
+            where("studentId", "==", user.uid),
+            where("isEmergency", "==", true),
+            where("createdAt", ">=", startOfMonth)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setEmergencyUsage(snapshot.size);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
+
+    // Fetch My Lost Reports
+    useEffect(() => {
+        if (user && showLostFoundModal) {
+            const q = query(
+                collection(db, "lost_found"),
+                where("userId", "==", user.uid),
+                orderBy("createdAt", "desc")
+            );
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                setMyLostReports(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            });
+            return () => unsubscribe();
+        }
+    }, [user, showLostFoundModal]);
 
     // 9. Persistent Serving Token Display
     // Ensure we are always subscribed
@@ -190,7 +421,7 @@ export default function StudentDashboard() {
 
     // Fetch History
     useEffect(() => {
-        if (user && showHistory) {
+        if (user && (showHistory || showLostFoundModal)) {
             const q = query(
                 collection(db, "bookings"),
                 where("studentId", "==", user.uid),
@@ -202,7 +433,7 @@ export default function StudentDashboard() {
             });
             return () => unsubscribe();
         }
-    }, [user, showHistory]);
+    }, [user, showHistory, showLostFoundModal]);
 
     const handleBuyCredits = async (amount: number, cost: number) => {
         if (!user) return;
@@ -210,7 +441,7 @@ export default function StudentDashboard() {
             await updateDoc(doc(db, "users", user.uid), {
                 credits: increment(amount)
             });
-            setCredits(prev => prev + amount);
+            // State updated via onSnapshot listener
             showToast("Purchase Successful! Credits Added.", "success");
         } catch (error) {
             console.error(error);
@@ -229,7 +460,7 @@ export default function StudentDashboard() {
             await updateDoc(doc(db, "users", user.uid), {
                 subscription: newSubscription
             });
-            setSubscription(newSubscription);
+            // State updated via onSnapshot listener
             showToast("Pass Activated!", "success");
         } catch (error) {
             console.error(error);
@@ -245,8 +476,10 @@ export default function StudentDashboard() {
         else if (activeField === "drop") query = drop;
         else if (activeField === "collegeName") query = editFormData.collegeName;
         else if (activeField === "homeAddress") query = editFormData.homeAddress;
+        else if (activeField === "newAddress") query = newAddress.address;
 
         // Pre-process all saved addresses
+        console.log("DEBUG: savedAddresses state:", savedAddresses);
         const allSaved = (savedAddresses || []).map(addr => ({
             ...addr,
             isSaved: true,
@@ -288,15 +521,31 @@ export default function StudentDashboard() {
         }, 300); // Reduced delay for better responsiveness
 
         return () => clearTimeout(timer);
-    }, [pickup, drop, editFormData.collegeName, editFormData.homeAddress, activeField, savedAddresses]);
+    }, [pickup, drop, editFormData.collegeName, editFormData.homeAddress, newAddress.address, activeField, savedAddresses]);
 
     const handleSelectSuggestion = (suggestion: any) => {
         const address = suggestion.display_name || suggestion.address;
+        const lat = parseFloat(suggestion.lat);
+        const lon = parseFloat(suggestion.lon);
 
-        if (activeField === "pickup") setPickup(address);
-        else if (activeField === "drop") setDrop(address);
+        if (activeField === "pickup") {
+            setPickup(address);
+            if (!isNaN(lat) && !isNaN(lon)) setPickupCoords({ lat, lng: lon });
+        }
+        else if (activeField === "drop") {
+            setDrop(address);
+            if (!isNaN(lat) && !isNaN(lon)) setDropCoords({ lat, lng: lon });
+        }
         else if (activeField === "collegeName") setEditFormData(prev => ({ ...prev, collegeName: address }));
         else if (activeField === "homeAddress") setEditFormData(prev => ({ ...prev, homeAddress: address }));
+        else if (activeField === "newAddress") {
+            setNewAddress(prev => ({
+                ...prev,
+                address: address,
+                lat: isNaN(lat) ? 0 : lat,
+                lng: isNaN(lon) ? 0 : lon
+            }));
+        }
 
         setSuggestions([]);
         setActiveField(null);
@@ -347,13 +596,15 @@ export default function StudentDashboard() {
             name: nameToSave,
             type: newAddress.type,
             address: newAddress.address,
-            landmark: newAddress.landmark
+            landmark: newAddress.landmark,
+            lat: newAddress.lat,
+            lng: newAddress.lng
         };
 
         const updatedAddresses = [...savedAddresses, addressEntry];
         await updateDoc(doc(db, "users", user.uid), { savedAddresses: updatedAddresses });
         setSavedAddresses(updatedAddresses);
-        setNewAddress({ type: "Home", customName: "", address: "", landmark: "" });
+        setNewAddress({ type: "Home", customName: "", address: "", landmark: "", lat: 0, lng: 0 });
         setAddressModalView("list"); // Go back to list
         showToast("Address Saved!", "success");
     };
@@ -385,22 +636,24 @@ export default function StudentDashboard() {
             return;
         }
 
+        // Logic: If pickup is set (and not default campus), set drop. If pickup is default, set drop? 
+        // Or should we support setting Pickup via map? 
+        // Current logic mostly sets drop. Let's make it smarter:
+        // If "pickup" field was active last? No track of that.
+        // Simple heuristic: If pickup is default/empty, set Pickup?
+        // But user usually wants to go FROM College TO somewhere.
+
         if (pickup === (userProfile?.collegeName || "MBU Campus") && !drop) {
             setDrop(address);
+            setDropCoords({ lat, lng });
         } else if (!drop) {
-            setDrop(address); // Just set drop if empty, or even if not empty, maybe just override? User asked to "let it be". 
-            // Logic: If pickup is set, set drop. If pickup is default, set drop.
-            // If both set, maybe just update drop? or pickup?
-            // Simplest: Always update Drop if Pickup is set. Update Pickup if Pickup is not set?
             setDrop(address);
+            setDropCoords({ lat, lng });
         } else {
-            // If both exist, allow clicking to update drop mostly? or Reset?
-            // Simplest: Always update Drop if Pickup is set. Update Pickup if Pickup is not set?
+            // Overwrite drop
             setDrop(address);
+            setDropCoords({ lat, lng });
         }
-        // Defer calculation slightly to ensure state update
-        // Defer calculation slightly to ensure state update
-        // setTimeout(calculateFare, 100); // Removed Fare Calculation
     };
 
     const handleBookRide = async (e: React.FormEvent) => {
@@ -429,14 +682,9 @@ export default function StudentDashboard() {
         try {
             // EMERGENCY LIMIT CHECK
             if (isEmergency) {
-                const currentMonth = new Date().getMonth();
-                const emergencyRidesThisMonth = history.filter(r =>
-                    r.isEmergency &&
-                    new Date(r.createdAt).getMonth() === currentMonth
-                ).length;
-
-                if (emergencyRidesThisMonth >= 2) {
-                    showToast("Monthly Emergency Limit Reached (2/Month)", "error");
+                // Use the authoritative state we added earlier
+                if (emergencyUsage >= 5) {
+                    showToast("Monthly Emergency Limit Reached (5/Month)", "error");
                     setLoading(false);
                     return;
                 }
@@ -445,26 +693,57 @@ export default function StudentDashboard() {
             const tokenNumber = await generateToken();
             setMyToken(tokenNumber);
 
-            // Deduct Credits Immediately
-            if (paymentMode === "credits") {
-                await updateDoc(doc(db, "users", user.uid), {
-                    credits: increment(-1)
-                });
-                setCredits(prev => Math.max(0, prev - 1));
+
+
+            // Credits are deducted when driver accepts (in DriverDashboard)
+            // Payment Mode "credits" just validates balance here.
+
+            console.log("DEBUG: Booking Coords:", { pickupCoords, dropCoords, pickup, drop });
+
+            // Fallback Geocoding if coords are missing
+            let finalPickupCoords = isEmergency ? null : pickupCoords;
+            let finalDropCoords = dropCoords;
+
+            if (!isEmergency && !finalPickupCoords && pickup) {
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pickup)}&limit=1`);
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        finalPickupCoords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+                    }
+                } catch (e) {
+                    console.error("Pickup geocoding failed", e);
+                }
             }
+
+            if (!finalDropCoords && drop) {
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(drop)}&limit=1`);
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        finalDropCoords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+                    }
+                } catch (e) {
+                    console.error("Drop geocoding failed", e);
+                }
+            }
+
+            console.log("DEBUG: Final Booking Coords:", { finalPickupCoords, finalDropCoords });
 
             const rideData = {
                 studentId: user.uid,
                 studentName: userProfile?.name || "Student",
-                pickup: isEmergency ? "📍 CURRENT LOCATION" : pickup, // Force current loc for emergency? Or keep user choice. User choice is better.
+                pickup: isEmergency ? "📍 CURRENT LOCATION" : pickup,
                 drop,
+                pickupCoords: finalPickupCoords,
+                dropCoords: finalDropCoords,
                 rideType,
                 scheduledDate: rideType === "scheduled" ? scheduledDate : null,
                 scheduledTime: rideType === "scheduled" ? scheduledTime : null,
                 paymentMode,
                 status: "PENDING",
                 createdAt: new Date().toISOString(),
-                tokenNumber: isEmergency ? 0 : tokenNumber, // 0 = Priority/Top
+                tokenNumber: isEmergency ? 0 : tokenNumber,
                 studentPhone: userProfile?.phone || "Not Provided",
                 isEmergency: isEmergency,
                 emergencyReason: isEmergency ? emergencyReason : null
@@ -489,19 +768,93 @@ export default function StudentDashboard() {
             await updateDoc(doc(db, "bookings", currentBookingId), {
                 status: "CANCELLED"
             });
-            handleEndRide();
+            // Clear state manually instead of calling handleEndRide to avoid "Completed" toast/logic
+            setActiveRide(null);
+            setBookingStatus("IDLE");
+            setCurrentBookingId(null);
+            setMyToken(null);
             showToast("Ride Cancelled", "info");
         } catch (error) {
             console.error("Cancellation failed", error);
         }
     };
 
-    const handleEndRide = () => {
+    const handleEndRide = async () => {
+        if (currentBookingId) {
+            try {
+                await updateDoc(doc(db, "bookings", currentBookingId), {
+                    status: "COMPLETED",
+                    completedAt: new Date().toISOString()
+                });
+                showToast("Ride Completed! ✅", "success");
+            } catch (error) {
+                console.error("Error ending ride", error);
+                showToast("Error updating status", "error");
+            }
+        }
+        // Clear local state
         setActiveRide(null);
         setBookingStatus("IDLE");
         setCurrentBookingId(null);
         setMyToken(null);
     };
+
+    const handleReportLostItem = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || !lostItemName || !lostItemDesc) return;
+
+        setLoading(true);
+        try {
+            await addDoc(collection(db, "lost_found"), {
+                userId: user.uid,
+                userType: "student",
+                type: "LOST",
+                itemName: lostItemName,
+                description: lostItemDesc,
+                rideId: selectedLostRide || null,
+                rideDetails: selectedLostRide ? history.find(h => h.id === selectedLostRide) : null,
+                status: "OPEN",
+                createdAt: new Date().toISOString(),
+                studentName: userProfile?.name || "Student",
+                contactInfo: userProfile?.phone || user.email
+            });
+            showToast("Report Submitted Successfully! 🔍", "success");
+            setShowLostFoundModal(false);
+            setLostItemDesc("");
+            setLostItemName("");
+            setSelectedLostRide(null);
+            // setShowLostFoundModal(false); // Keep open to show the new list
+        } catch (error) {
+            console.error("Error reporting lost item:", error);
+            alert("Failed to submit report. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCollected = async (reportId: string) => {
+        try {
+            await updateDoc(doc(db, "lost_found", reportId), {
+                status: "COLLECTED"
+            });
+            alert("Great! Glad you got your item back. 🎉");
+        } catch (error) {
+            console.error("Error updating status:", error);
+        }
+    };
+
+    const handleItemCollected = async (reportId: string) => {
+        try {
+            await updateDoc(doc(db, "lost_found", reportId), {
+                status: "COLLECTED"
+            });
+            showToast("Item marked as collected! Case closed. ✅", "success");
+        } catch (error) {
+            console.error("Error updating status", error);
+            showToast("Failed to update status", "error");
+        }
+    };
+
 
     if (bookingStatus === "PENDING") {
         return (
@@ -510,19 +863,35 @@ export default function StudentDashboard() {
                 <div className="bg-gradient-to-br from-yellow-500/10 to-transparent border border-yellow-500/50 p-8 rounded-3xl text-center w-full max-w-md shadow-2xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent animate-pulse"></div>
 
-                    <div className="text-4xl mb-4">🎫</div>
-                    <h2 className="text-xl font-bold text-yellow-500 mb-1">QUEUE STATUS</h2>
+                    {rideType === "scheduled" ? (
+                        <>
+                            <div className="text-4xl mb-4">📅</div>
+                            <h2 className="text-xl font-bold text-yellow-500 mb-1">WAITING FOR DRIVER</h2>
+                            <div className="my-6">
+                                <p className="text-gray-400 text-sm uppercase tracking-wider mb-2">Scheduled For</p>
+                                <div className="text-4xl font-black text-white tracking-tight">{scheduledTime || "N/A"}</div>
+                                <div className="text-sm text-gray-500 mt-1">{scheduledDate}</div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="text-4xl mb-4">🎫</div>
+                            <h2 className="text-xl font-bold text-yellow-500 mb-1">QUEUE STATUS</h2>
 
-                    <div className="my-6">
-                        <p className="text-gray-400 text-sm uppercase tracking-wider mb-2">Your Token Number</p>
-                        <div className="text-6xl font-black text-white tracking-tight">{myToken}</div>
-                    </div>
+                            <div className="my-6">
+                                <p className="text-gray-400 text-sm uppercase tracking-wider mb-2">Your Token Number</p>
+                                <div className="text-6xl font-black text-white tracking-tight">{myToken}</div>
+                            </div>
+                        </>
+                    )}
 
                     <div className="bg-black/40 rounded-xl p-4 border border-white/5 space-y-2">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-400">Currently Serving</span>
-                            <span className="text-green-400 font-mono font-bold">Token {servingToken || "-"}</span>
-                        </div>
+                        {rideType !== "scheduled" && (
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-gray-400">Currently Serving</span>
+                                <span className="text-green-400 font-mono font-bold">Token {servingToken || "-"}</span>
+                            </div>
+                        )}
                         <div className="bg-gray-800 p-4 rounded-xl flex justify-between items-center">
                             <span className="text-gray-400">Payment Mode</span>
                             <span className="font-bold text-white capitalize">{paymentMode}</span>
@@ -552,6 +921,37 @@ export default function StudentDashboard() {
     }
 
     if (activeRide && bookingStatus === "CONFIRMED") {
+        if (activeRide.rideType === "scheduled") {
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="bg-blue-900/20 border border-blue-500/50 p-8 rounded-3xl text-center shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-pulse"></div>
+                        <h2 className="text-3xl font-black text-blue-400 mb-2">Ride Confirmed! ✅</h2>
+                        <p className="text-gray-300 text-lg">Your auto is scheduled.</p>
+
+                        <div className="my-6 bg-black/40 p-4 rounded-xl border border-blue-500/20 inline-block">
+                            <p className="text-xs text-blue-300 uppercase font-bold tracking-wider mb-1">Scheduled For</p>
+                            <p className="text-2xl font-bold text-white">
+                                {new Date(activeRide.scheduledDate).toLocaleDateString("en-GB", { day: 'numeric', month: 'short' })}
+                                <span className="mx-2 text-gray-500">|</span>
+                                <span className="text-yellow-400 font-black text-4xl drop-shadow-md animate-pulse">
+                                    {activeRide.scheduledTime}
+                                </span>
+                            </p>
+                        </div>
+
+                        {/* Driver Details (Minimal) */}
+                        <div className="mt-2 text-sm text-gray-400">
+                            Assigned Driver: <span className="text-white font-bold">{activeRide.driverName}</span> ({activeRide.vehicleNumber})
+                        </div>
+
+                        {/* Cancel Button Removed for Confirmed Rides as per policy */}
+                    </div>
+
+                </div>
+            );
+        }
+
         return (
             <div className="space-y-6 animate-fade-in">
                 <div className="bg-green-900/20 border border-green-500/50 p-6 rounded-2xl text-center">
@@ -602,6 +1002,60 @@ export default function StudentDashboard() {
         <div className="space-y-6 relative">
             {/* Toast Notification */}
             {toast && <NotificationToast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+            {/* Voice Agent */}
+            <VoiceBookingAgent
+                onBookingParsed={handleVoiceParsed}
+                savedAddresses={userProfile?.savedAddresses || []}
+            />
+
+            {/* Voice Confirmation Modal */}
+            {showVoiceModal && voiceData && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+                    <div className="bg-gray-900 w-full max-w-sm rounded-2xl border border-gray-700 p-6 shadow-2xl relative">
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-blue-600 p-4 rounded-full border-4 border-black shadow-xl">
+                            <span className="text-3xl">🎙️</span>
+                        </div>
+
+                        <div className="mt-8 text-center">
+                            <h2 className="text-xl font-bold text-white mb-1">Confirm Voice Booking</h2>
+                            <p className="text-gray-400 text-sm mb-4">"{voiceData.originalTranscript}"</p>
+
+                            <div className="bg-gray-800 rounded-xl p-4 text-left space-y-3 mb-6">
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Pickup</p>
+                                    <p className="text-white font-semibold">{voiceData.pickup}</p>
+                                </div>
+                                <div className="border-t border-gray-700 pt-2">
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Drop</p>
+                                    <p className="text-white font-semibold">{voiceData.drop}</p>
+                                </div>
+                                {voiceData.rideType === "scheduled" && (
+                                    <div className="border-t border-gray-700 pt-2">
+                                        <p className="text-xs text-gray-500 uppercase font-bold">Schedule</p>
+                                        <p className="text-yellow-400 font-semibold">{voiceData.scheduledTime}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowVoiceModal(false)}
+                                    className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-bold hover:bg-gray-700"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmVoiceBooking}
+                                    className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg shadow-blue-900/20"
+                                >
+                                    Confirm & Book
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Edit Profile Modal */}
             {showEditProfile && (
@@ -796,9 +1250,9 @@ export default function StudentDashboard() {
                                             value={newAddress.address}
                                             onChange={(e) => {
                                                 setNewAddress({ ...newAddress, address: e.target.value });
-                                                setActiveField("pickup"); // Correctly reuse checking field
+                                                setActiveField("newAddress");
                                             }}
-                                            onFocus={() => setActiveField("pickup")} // Trick to reuse suggestions logic
+                                            onFocus={() => setActiveField("newAddress")}
                                         />
                                         {/* Suggestions Overlay in Modal */}
                                         {suggestions.length > 0 && newAddress.address.length > 2 && (
@@ -806,7 +1260,14 @@ export default function StudentDashboard() {
                                                 {suggestions.map((s, i) => (
                                                     <div key={i}
                                                         onClick={() => {
-                                                            setNewAddress({ ...newAddress, address: s.display_name });
+                                                            const lat = parseFloat(s.lat);
+                                                            const lon = parseFloat(s.lon);
+                                                            setNewAddress({
+                                                                ...newAddress,
+                                                                address: s.display_name,
+                                                                lat: isNaN(lat) ? 0 : lat,
+                                                                lng: isNaN(lon) ? 0 : lon
+                                                            });
                                                             setSuggestions([]);
                                                         }}
                                                         className="p-3 hover:bg-gray-700 cursor-pointer text-sm text-gray-300 border-b border-gray-700/50"
@@ -948,7 +1409,7 @@ export default function StudentDashboard() {
                                                 <div className="flex items-center gap-3">
                                                     <span className="text-white font-bold text-lg">{new Date(ride.createdAt).toLocaleDateString("en-GB")}</span>
                                                     <span className="bg-[#451a03] text-[#f59e0b] px-2 py-1 rounded text-xs font-bold border border-[#f59e0b]/30">
-                                                        Ticket #{ride.tokenNumber}
+                                                        Token #{ride.tokenNumber}
                                                     </span>
                                                 </div>
                                                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${ride.status === "COMPLETED" ? "bg-green-500/20 text-green-400" :
@@ -1091,6 +1552,12 @@ export default function StudentDashboard() {
                             </div>
                             <span className="font-semibold text-gray-300 group-hover:text-white">My Profile</span>
                         </button>
+                        <button onClick={() => setShowLostFoundModal(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group col-span-2 md:col-span-1">
+                            <div className="w-12 h-12 bg-pink-900/30 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <span className="text-2xl">🔍</span>
+                            </div>
+                            <span className="font-semibold text-gray-300 group-hover:text-white">Lost & Found</span>
+                        </button>
                     </div>
                 </div >
             )
@@ -1135,10 +1602,25 @@ export default function StudentDashboard() {
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <h3 className="text-red-400 font-bold flex items-center gap-2">🚨 Emergency Mode</h3>
-                                            <p className="text-[10px] text-gray-400">Skip queue • Max 2/month</p>
+                                            <p className="text-[10px] text-gray-400">
+                                                Skip queue • Max 5/month •
+                                                <span className={emergencyUsage >= 5 ? "text-red-500 font-bold ml-1" : "text-green-400 font-bold ml-1"}>
+                                                    {5 - emergencyUsage} left
+                                                </span>
+                                            </p>
                                         </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input type="checkbox" className="sr-only peer" checked={isEmergency} onChange={(e) => { setIsEmergency(e.target.checked); setRideType("instant"); }} />
+                                        <label className={`relative inline-flex items-center ${emergencyUsage >= 5 ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={isEmergency}
+                                                disabled={emergencyUsage >= 5}
+                                                onChange={(e) => {
+                                                    if (emergencyUsage >= 5) return;
+                                                    setIsEmergency(e.target.checked);
+                                                    setRideType("instant");
+                                                }}
+                                            />
                                             <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
                                         </label>
                                     </div>
@@ -1304,6 +1786,175 @@ export default function StudentDashboard() {
                 )
             }
 
+
+
+            {/* Voice Confirmation Modal */}
+            {showVoiceModal && voiceData && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+                    <div className="bg-gray-900 w-full max-w-sm rounded-3xl border border-gray-800 p-6 shadow-2xl relative text-center space-y-4">
+                        <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-2 animate-pulse">
+                            <span className="text-3xl">🎙️</span>
+                        </div>
+                        <h2 className="text-xl font-black text-white">Confirm Voice Booking</h2>
+                        <p className="text-gray-400 text-sm">" {voiceData.originalTranscript} "</p>
+
+                        <div className="bg-gray-800/50 p-4 rounded-2xl space-y-3 text-left border border-gray-700">
+                            <div className="flex justify-between">
+                                <span className="text-gray-500 text-xs font-bold uppercase">Pickup</span>
+                                <span className="text-white font-bold text-sm text-right break-words max-w-[200px]">{voiceData.pickup || "Current Location"}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500 text-xs font-bold uppercase">Drop</span>
+                                <span className="text-white font-bold text-sm text-right break-words max-w-[200px]">{voiceData.drop || "Not specified"}</span>
+                            </div>
+                            {voiceData.rideType === "scheduled" && (
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500 text-xs font-bold uppercase">Time</span>
+                                    <span className="text-yellow-400 font-bold text-sm">
+                                        {voiceData.scheduledTime}
+                                    </span>
+                                </div>
+                            )}
+                            <div className="flex justify-between border-t border-gray-700 pt-2 mt-2">
+                                <span className="text-gray-500 text-xs font-bold uppercase">Payment</span>
+                                <span className="text-green-400 font-bold text-sm uppercase">
+                                    {voiceData.paymentMode ? (
+                                        voiceData.paymentMode === "credits" ? "Credits 🟡" :
+                                            voiceData.paymentMode === "subscription" ? "Subscription 🟣" : "Cash 💵"
+                                    ) : (
+                                        subscription?.active ? "Subscription 🟣" : credits > 0 ? "Credits 🟡" : "Cash 💵"
+                                    )}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-4">
+                            <button
+                                onClick={() => setShowVoiceModal(false)}
+                                className="flex-1 py-3 bg-gray-800 text-gray-400 font-bold rounded-xl hover:bg-gray-700 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmVoiceBooking}
+                                className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-500 shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+                            >
+                                Confirm & Book
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showLostFoundModal && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-gray-900 w-full max-w-lg rounded-2xl border border-gray-800 p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-white">Lost & Found 🔍</h2>
+                            <button onClick={() => setShowLostFoundModal(false)} className="text-gray-400 hover:text-white">✕</button>
+                        </div>
+
+                        {/* MY REPORTS SECTION */}
+                        {myLostReports.length > 0 && (
+                            <div className="mb-8 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">My Reports</h3>
+                                <div className="space-y-3">
+                                    {myLostReports.map(report => (
+                                        <div key={report.id} className="bg-black/40 p-3 rounded-lg border border-gray-700">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="text-white font-bold">{report.itemName}</span>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${report.status === "FOUND_BY_DRIVER" ? "bg-green-500 text-black" :
+                                                    report.status === "COLLECTED" ? "bg-gray-600 text-white" :
+                                                        report.status === "NOT_FOUND" ? "bg-red-500/20 text-red-400" :
+                                                            "bg-blue-500/20 text-blue-400"
+                                                    }`}>
+                                                    {report.status.replace(/_/g, " ")}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mb-2 truncate">{report.description}</p>
+
+                                            {/* DRIVER FOUND IT */}
+                                            {report.status === "FOUND_BY_DRIVER" && (
+                                                <div className="bg-green-900/20 p-2 rounded border border-green-500/30 mb-2">
+                                                    <p className="text-green-400 text-xs font-bold">🎉 Driver found it!</p>
+                                                    {report.rideDetails?.driverPhone && (
+                                                        <a href={`tel:${report.rideDetails.driverPhone}`} className="text-white text-xs underline block mt-1">
+                                                            Call Driver: {report.rideDetails.driverPhone}
+                                                        </a>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleCollected(report.id)}
+                                                        className="w-full mt-2 bg-green-600 hover:bg-green-500 text-white text-xs font-bold py-2 rounded transition-colors"
+                                                    >
+                                                        I Received It
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* NEW REPORT FORM */}
+                        <div className="border-t border-gray-800 pt-6">
+                            <h3 className="text-sm font-bold text-white mb-4">Report New Item</h3>
+                            <form onSubmit={handleReportLostItem} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm text-gray-400 mb-1">Item Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Blue Umbrella, Wallet"
+                                        className="w-full bg-gray-800 p-3 rounded-xl text-white border border-gray-700 focus:border-pink-500 outline-none"
+                                        value={lostItemName}
+                                        onChange={(e) => setLostItemName(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm text-gray-400 mb-1">Description</label>
+                                    <textarea
+                                        placeholder="Describe the item securely..."
+                                        className="w-full bg-gray-800 p-3 rounded-xl text-white border border-gray-700 focus:border-pink-500 outline-none h-24 resize-none"
+                                        value={lostItemDesc}
+                                        onChange={(e) => setLostItemDesc(e.target.value)}
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm text-gray-400 mb-1">Select Ride (Optional)</label>
+                                    <select
+                                        className="w-full bg-gray-800 p-3 rounded-xl text-white border border-gray-700 focus:border-pink-500 outline-none"
+                                        value={selectedLostRide || ""}
+                                        onChange={(e) => setSelectedLostRide(e.target.value || null)}
+                                    >
+                                        <option value="">-- I don't remember --</option>
+                                        {history.slice(0, 5).map((ride) => {
+                                            const dateStr = new Date(ride.createdAt).toLocaleString("en-GB", {
+                                                day: "numeric", month: "short", hour: "numeric", minute: "numeric", hour12: true
+                                            });
+                                            const shortPickup = ride.pickup?.split(",")[0] || "Unknown";
+                                            const shortDrop = ride.drop?.split(",")[0] || "Unknown";
+                                            return (
+                                                <option key={ride.id} value={ride.id}>
+                                                    {dateStr} | {shortPickup} ➝ {shortDrop}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                    <p className="text-[10px] text-gray-500 mt-1">Linking to a ride helps identify the driver.</p>
+                                </div>
+
+                                <button type="submit" className="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 rounded-xl mt-4 transition-all shadow-lg shadow-pink-900/20">
+                                    Submit Report
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {activeTab === "share" && <RideSharing />}
             {activeTab === "timetable" && <AutomatedBooking />}
             {/* --- ACTIVE RIDE BOTTOM SECTION --- */}
@@ -1320,7 +1971,14 @@ export default function StudentDashboard() {
                                     </div>
                                     <div>
                                         <h3 className="text-yellow-500 font-bold">Waiting for Driver...</h3>
-                                        <p className="text-sm text-gray-400">Token #{myToken} • {paymentMode}</p>
+                                        {activeRide?.rideType === "scheduled" ? (
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-white">📅 Scheduled for {activeRide.scheduledTime}</span>
+                                                <span className="text-xs text-gray-400">Date: {activeRide.scheduledDate}</span>
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-400">Token #{myToken} • {paymentMode}</p>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="text-right hidden md:block">

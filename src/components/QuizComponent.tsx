@@ -110,8 +110,10 @@ export default function QuizComponent({ isActive = true }: QuizComponentProps) {
                 }
                 setLoading(false);
                 // Start filling buffer again
-                fetchQuestionInternal().then(nq => setNextQuestion(nq));
-            }, 6000); // 6s Delay to respect Rate Limit (10req/min = 6s/req)
+                setTimeout(() => {
+                    fetchQuestionInternal().then(nq => setNextQuestion(nq));
+                }, 6000); // 6s Delay to respect Rate Limit
+            });
         }
     };
 

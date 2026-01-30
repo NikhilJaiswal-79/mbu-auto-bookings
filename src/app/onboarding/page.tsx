@@ -88,7 +88,7 @@ export default function OnboardingPage() {
                 name: formData.fullName,
                 email: user.email,
                 role: role,
-                phoneNumber: formData.phoneNumber,
+                phone: formData.phoneNumber,
                 createdAt: new Date().toISOString(),
             };
 

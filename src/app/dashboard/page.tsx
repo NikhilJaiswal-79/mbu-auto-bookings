@@ -18,7 +18,14 @@ export default function DashboardPage() {
         }
     }, [user, userProfile, loading, router]);
 
-    if (loading) return <div className="text-white">Loading...</div>;
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center text-white space-y-4">
+                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="animate-pulse">Loading MBU Platform...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-950 text-white p-8">

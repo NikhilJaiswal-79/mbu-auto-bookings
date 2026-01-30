@@ -56,7 +56,7 @@ export const subscribeToServingToken = (callback: (token: number | null) => void
 
     const q = query(
         collection(db, "bookings"),
-        where("status", "==", "CONFIRMED")
+        where("status", "in", ["CONFIRMED", "COMPLETED"])
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {

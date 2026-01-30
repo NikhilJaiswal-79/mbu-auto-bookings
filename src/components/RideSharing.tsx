@@ -4,12 +4,44 @@ import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
 import { collection, addDoc, query, where, onSnapshot, updateDoc, doc, arrayUnion } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import dynamic from "next/dynamic";
+
+
+
+interface Ride {
+    id?: string;
+    hostId: string;
+    hostName: string;
+    origin: string;
+    destination: string;
+    originCoords?: { lat: number, lng: number } | null;
+    destCoords?: { lat: number, lng: number } | null;
+    vehicleType: string;
+    vehicleNumber: string;
+    seatsAvailable: number;
+    date: string;
+    time: string;
+    phoneNumber: string;
+    isInstant: boolean;
+    status: string;
+    participants: { userId: string; name: string; phone: string }[];
+    createdAt: string;
+    role?: "Host" | "Passenger";
+}
+
+interface Suggestion {
+    display_name: string;
+    lat: string;
+    lon: string;
+    isSaved?: boolean;
+    type?: string;
+}
 
 export default function RideSharing() {
     const { user, userProfile } = useAuth();
     const [mode, setMode] = useState<"offer" | "find" | "history">("find");
-    const [rides, setRides] = useState<any[]>([]);
-    const [myHistory, setMyHistory] = useState<any[]>([]);
+    const [rides, setRides] = useState<Ride[]>([]);
+    const [myHistory, setMyHistory] = useState<Ride[]>([]);
     const [loading, setLoading] = useState(false);
 
     // Offer Ride Form State
@@ -21,12 +53,22 @@ export default function RideSharing() {
         seats: 1,
         date: "",
         time: "",
-        phoneNumber: userProfile?.phoneNumber || "",
+        phoneNumber: userProfile?.phone || "",
         isInstant: false
     });
 
+    // Coordinates State
+    const [originCoords, setOriginCoords] = useState<{ lat: number, lng: number } | null>(null);
+    const [destCoords, setDestCoords] = useState<{ lat: number, lng: number } | null>(null);
+
+    // Autocomplete State
+    const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+    const [activeField, setActiveField] = useState<"origin" | "destination" | null>(null);
+
     // Find Ride Filter
     const [searchDest, setSearchDest] = useState("");
+
+    const MapComponent = dynamic(() => import("./MapComponent"), { ssr: false });
 
     useEffect(() => {
         if (!user) return;
@@ -34,9 +76,9 @@ export default function RideSharing() {
         // 1. Listen for Active Rides (Find Mode)
         const qActive = query(collection(db, "rides"), where("status", "==", "OPEN"));
         const unsubscribeActive = onSnapshot(qActive, (snapshot) => {
-            const activeRides: any[] = [];
+            const activeRides: Ride[] = [];
             snapshot.forEach((doc) => {
-                const data = doc.data();
+                const data = doc.data() as Ride;
                 // Filter: Not my ride, and has seats
                 if (data.hostId !== user.uid && data.seatsAvailable > 0) {
                     activeRides.push({ id: doc.id, ...data });
@@ -45,15 +87,12 @@ export default function RideSharing() {
             setRides(activeRides);
         });
 
-        // 2. Listen for History (My Offered Rides OR Joined Rides)
-        // complex queries in firestore are hard, so we'll fetch all and filter client side for prototype
-        // or separate queries. For now, let's just query rides where I participated or hosted.
-        // Simplified: Fetch all rides and filter client side for History to avoid complex index creation now.
+        // 2. Listen for History
         const qAll = query(collection(db, "rides"));
         const unsubscribeHistory = onSnapshot(qAll, (snapshot) => {
-            const historydata: any[] = [];
+            const historydata: Ride[] = [];
             snapshot.forEach((doc) => {
-                const data = doc.data();
+                const data = doc.data() as Ride;
                 const amIHost = data.hostId === user.uid;
                 const amIParticipant = data.participants?.some((p: any) => p.userId === user.uid);
 
@@ -70,6 +109,70 @@ export default function RideSharing() {
         };
     }, [user]);
 
+    // Autocomplete Effect
+    useEffect(() => {
+        if (!activeField) return;
+
+        const queryText = activeField === "origin" ? offerForm.origin : offerForm.destination;
+        const saved = (userProfile?.savedAddresses || []).map((addr: any) => ({
+            display_name: addr.address || addr.name, // Handle different schemas
+            lat: String(addr.lat || 0),
+            lon: String(addr.lng || 0),
+            isSaved: true,
+            type: addr.type
+        }));
+
+        if (!queryText) {
+            setSuggestions(saved);
+            return;
+        }
+
+        // Filter saved addresses
+        const savedMatches = saved.filter((s: any) =>
+            s.display_name.toLowerCase().includes(queryText.toLowerCase()) ||
+            (s.type && s.type.toLowerCase().includes(queryText.toLowerCase()))
+        );
+
+        if (queryText.length < 3) {
+            setSuggestions(savedMatches);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${queryText}&limit=5`);
+                const apiData = await res.json();
+
+                // Merge: Saved + API (Unique)
+                const savedMap = new Set(savedMatches.map((s: any) => s.display_name));
+                const uniqueApi = apiData.filter((a: any) => !savedMap.has(a.display_name));
+
+                setSuggestions([...savedMatches, ...uniqueApi]);
+            } catch (error) {
+                console.error("Autocomplete error", error);
+                setSuggestions(savedMatches);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [offerForm.origin, offerForm.destination, activeField, userProfile]);
+
+    const handleSelectSuggestion = (suggestion: Suggestion) => {
+        const address = suggestion.display_name;
+        const lat = parseFloat(suggestion.lat);
+        const lon = parseFloat(suggestion.lon);
+
+        if (activeField === "origin") {
+            setOfferForm(prev => ({ ...prev, origin: address }));
+            setOriginCoords({ lat, lng: lon });
+        } else if (activeField === "destination") {
+            setOfferForm(prev => ({ ...prev, destination: address }));
+            setDestCoords({ lat, lng: lon });
+        }
+        setSuggestions([]);
+        setActiveField(null);
+    };
+
     const handleOfferRide = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
@@ -81,6 +184,8 @@ export default function RideSharing() {
                 hostName: userProfile?.name || "Unknown",
                 origin: offerForm.origin,
                 destination: offerForm.destination,
+                originCoords,
+                destCoords,
                 vehicleType: offerForm.vehicleType,
                 vehicleNumber: offerForm.vehicleNumber,
                 seatsAvailable: Number(offerForm.seats),
@@ -96,6 +201,8 @@ export default function RideSharing() {
             setMode("history"); // Redirect to history
             // Reset form
             setOfferForm({ ...offerForm, origin: "", destination: "", isInstant: false });
+            setOriginCoords(null);
+            setDestCoords(null);
         } catch (error) {
             console.error("Error offering ride", error);
             alert("Failed to offer ride");
@@ -118,7 +225,7 @@ export default function RideSharing() {
                 participants: arrayUnion({
                     userId: user.uid,
                     name: userProfile?.name || "User",
-                    phone: userProfile?.phoneNumber || ""
+                    phone: userProfile?.phone || ""
                 }),
                 seatsAvailable: currentSeats - 1
             });
@@ -168,8 +275,59 @@ export default function RideSharing() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input type="text" placeholder="Origin" value={offerForm.origin} onChange={(e) => setOfferForm({ ...offerForm, origin: e.target.value })} className="bg-gray-800 rounded-lg p-3 text-white border border-gray-700 focus:border-blue-500 outline-none" required />
-                            <input type="text" placeholder="Destination" value={offerForm.destination} onChange={(e) => setOfferForm({ ...offerForm, destination: e.target.value })} className="bg-gray-800 rounded-lg p-3 text-white border border-gray-700 focus:border-blue-500 outline-none" required />
+                            {/* Origin Input with Suggesions */}
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Origin"
+                                    value={offerForm.origin}
+                                    onFocus={() => setActiveField("origin")}
+                                    onChange={(e) => setOfferForm({ ...offerForm, origin: e.target.value })}
+                                    className="w-full bg-gray-800 rounded-lg p-3 text-white border border-gray-700 focus:border-blue-500 outline-none"
+                                    required
+                                />
+                                {activeField === "origin" && suggestions.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 bg-gray-800 border border-gray-700 rounded-lg z-50 mt-1 max-h-40 overflow-y-auto">
+                                        {suggestions.map((s: Suggestion, i) => (
+                                            <div
+                                                key={i}
+                                                onClick={() => handleSelectSuggestion(s)}
+                                                className="p-3 hover:bg-gray-700 cursor-pointer text-sm text-gray-300 border-b border-gray-700/50 flex items-center gap-2"
+                                            >
+                                                {s.isSaved && <span className="text-yellow-400 font-bold">{s.type === "Home" ? "🏠" : "⭐"}</span>}
+                                                <span>{s.display_name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Destination Input with Suggestions */}
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Destination"
+                                    value={offerForm.destination}
+                                    onFocus={() => setActiveField("destination")}
+                                    onChange={(e) => setOfferForm({ ...offerForm, destination: e.target.value })}
+                                    className="w-full bg-gray-800 rounded-lg p-3 text-white border border-gray-700 focus:border-blue-500 outline-none"
+                                    required
+                                />
+                                {activeField === "destination" && suggestions.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 bg-gray-800 border border-gray-700 rounded-lg z-50 mt-1 max-h-40 overflow-y-auto">
+                                        {suggestions.map((s: Suggestion, i) => (
+                                            <div
+                                                key={i}
+                                                onClick={() => handleSelectSuggestion(s)}
+                                                className="p-3 hover:bg-gray-700 cursor-pointer text-sm text-gray-300 border-b border-gray-700/50 flex items-center gap-2"
+                                            >
+                                                {s.isSaved && <span className="text-yellow-400 font-bold">{s.type === "Home" ? "🏠" : "⭐"}</span>}
+                                                <span>{s.display_name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
 
                             {!offerForm.isInstant && (
                                 <>
@@ -187,6 +345,16 @@ export default function RideSharing() {
                             <input type="number" placeholder="Seats" value={offerForm.seats} onChange={(e) => setOfferForm({ ...offerForm, seats: Number(e.target.value) })} className="bg-gray-800 rounded-lg p-3 text-white border border-gray-700" min="1" required />
 
                             <input type="tel" placeholder="Your Phone Number" value={offerForm.phoneNumber} onChange={(e) => setOfferForm({ ...offerForm, phoneNumber: e.target.value })} className="bg-gray-800 rounded-lg p-3 text-white border border-gray-700 col-span-2" required />
+                        </div>
+
+                        {/* Map Preview */}
+                        <div className="h-64 rounded-xl overflow-hidden border border-gray-700 shadow-inner relative">
+                            <MapComponent pickup={originCoords} drop={destCoords} />
+                            {!originCoords && !destCoords && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none z-10">
+                                    <p className="text-gray-300 text-sm bg-black/50 px-3 py-1 rounded-full">Select locations to preview route</p>
+                                </div>
+                            )}
                         </div>
 
                         <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-900/20 active:scale-95">

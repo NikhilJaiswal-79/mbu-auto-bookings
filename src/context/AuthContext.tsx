@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { auth, db, googleProvider } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 
 interface UserProfile {
     role: "student" | "driver";
@@ -20,6 +20,7 @@ interface UserProfile {
     };
     savedAddresses?: { name: string; address: string; lat: number; lng: number }[];
     credits?: number;
+    reputation?: number;
     subscription?: { status: string; expiry: string };
 }
 
@@ -39,27 +40,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        let profileUnsub: (() => void) | null = null;
+
+        const authUnsub = onAuthStateChanged(auth, (currentUser) => {
+            // Cleanup previous listener if exists (e.g. logout or user switch)
+            if (profileUnsub) {
+                profileUnsub();
+                profileUnsub = null;
+            }
+
             setUser(currentUser);
+
             if (currentUser) {
-                // Fetch user profile from Firestore
-                try {
-                    const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-                    if (userDoc.exists()) {
-                        setUserProfile(userDoc.data() as UserProfile);
+                // Real-time listener for User Profile
+                profileUnsub = onSnapshot(doc(db, "users", currentUser.uid), (docSnap) => {
+                    if (docSnap.exists()) {
+                        setUserProfile(docSnap.data() as UserProfile);
                     } else {
                         setUserProfile(null);
                     }
-                } catch (error) {
+                    setLoading(false);
+                }, (error) => {
                     console.error("Error fetching user profile", error);
-                    setUserProfile(null);
-                }
+                    setLoading(false);
+                });
             } else {
                 setUserProfile(null);
+                setLoading(false);
             }
-            setLoading(false);
         });
-        return () => unsubscribe();
+
+        return () => {
+            authUnsub();
+            if (profileUnsub) profileUnsub();
+        };
     }, []);
 
     const signInWithGoogle = async () => {

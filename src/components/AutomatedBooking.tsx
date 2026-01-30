@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { extractTimetable, extractHolidays } from "@/lib/gemini";
 import { checkAndTriggerAutoBooking, resetDailyLog } from "@/lib/bookingAgent"; // New Agent
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, getDocs, collection, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 
 export default function AutomatedBooking() {
-    const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<"timetable" | "holidays" | "leaves" | "settings">("timetable");
+    const [activeTab, setActiveTab] = useState<"timetable" | "holidays" | "leaves" | "settings" | "team">("timetable");
+    const { user, userProfile } = useAuth();
 
     // Timetable State
     const [timetable, setTimetable] = useState<any>(null);
@@ -109,7 +109,7 @@ export default function AutomatedBooking() {
 
     const handleTestAgent = async () => {
         if (!user) return;
-        const result = await checkAndTriggerAutoBooking(user);
+        const result = await checkAndTriggerAutoBooking(user, true);
         if (result?.success) {
             alert("✅ Agent Success: " + result.message);
         } else if (result?.skipped) {
@@ -128,6 +128,76 @@ export default function AutomatedBooking() {
             alert("Error clearing memory.");
         }
     };
+
+    // Team Logic
+    const [team, setTeam] = useState<any[]>([]);
+    const [friendPhone, setFriendPhone] = useState("");
+    const [searchingFriend, setSearchingFriend] = useState(false);
+
+    useEffect(() => {
+        if (userProfile && (userProfile as any).timetable?.team) {
+            setTeam((userProfile as any).timetable.team);
+        }
+    }, [userProfile]);
+
+    const handleAddFriend = async () => {
+        if (!friendPhone || !user) return;
+        if (team.length >= 6) { // 6 because including self? No, usually friends list is friends. User said "upto a limit of 6". Let's say 5 friends + self.
+            alert("Team full! Max 5 friends.");
+            return;
+        }
+        setSearchingFriend(true);
+        try {
+            const q = query(collection(db, "users"), where("phone", "==", friendPhone));
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                alert("User not found with this phone number.");
+                return;
+            }
+
+            const friendDoc = querySnapshot.docs[0];
+            const friendData = friendDoc.data();
+
+            // Check if already in team
+            if (team.some(m => m.uid === friendDoc.id)) {
+                alert("Friend already in team!");
+                return;
+            }
+
+            if (friendDoc.id === user.uid) {
+                alert("You cannot add yourself!");
+                return;
+            }
+
+            const newMember = {
+                uid: friendDoc.id,
+                name: friendData.name || "Unknown",
+                phone: friendData.phone || friendPhone,
+                pickup: friendData.savedAddresses?.[0]?.address || "Home", // Default to first saved address
+                lat: friendData.savedAddresses?.[0]?.lat || 0,
+                lng: friendData.savedAddresses?.[0]?.lng || 0
+            };
+
+            const newTeam = [...team, newMember];
+            setTeam(newTeam);
+
+            // Save to Firestore
+            await updateDoc(doc(db, "users", user.uid), {
+                "timetable.team": newTeam
+            });
+
+            setFriendPhone("");
+            alert(`${newMember.name} added to team!`);
+
+        } catch (e: any) {
+            console.error(e);
+            alert("Error adding friend: " + e.message);
+        } finally {
+            setSearchingFriend(false);
+        }
+    };
+
 
     return (
         <div className="space-y-6">
@@ -150,21 +220,73 @@ export default function AutomatedBooking() {
                                     <span className="text-white font-bold">Active (Checks at 8 PM)</span>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handleResetAgent}
-                                    className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition-transform active:scale-95"
-                                    title="Clear 'Already Booked' Log"
-                                >
-                                    🧹 Reset
-                                </button>
-                                <button
-                                    onClick={handleTestAgent}
-                                    className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition-transform active:scale-95"
-                                >
-                                    ⚡ Force Run
-                                </button>
-                            </div>
+
+                            {/* TEAM TAB */}
+                            {activeTab === "team" && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl relative overflow-hidden">
+                                        <div className="relative z-10">
+                                            <h3 className="text-2xl font-black text-white mb-2">My Travel Team 👥</h3>
+                                            <p className="text-gray-400 text-sm mb-6">Add up to 5 friends. We'll pick everyone up in one auto!</p>
+
+                                            {/* Add Friend */}
+                                            <div className="flex gap-4 mb-8">
+                                                <input
+                                                    type="tel"
+                                                    placeholder="Enter Friend's Phone Number"
+                                                    value={friendPhone}
+                                                    onChange={(e) => setFriendPhone(e.target.value)}
+                                                    className="flex-1 bg-gray-800 text-white p-4 rounded-xl border border-gray-700 outline-none focus:border-blue-500 font-mono text-lg"
+                                                />
+                                                <button
+                                                    onClick={handleAddFriend}
+                                                    disabled={searchingFriend}
+                                                    className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
+                                                >
+                                                    {searchingFriend ? "Searching..." : "Add Friend"}
+                                                </button>
+                                            </div>
+
+                                            {/* Team List */}
+                                            <div className="space-y-4">
+                                                <h4 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Team Members ({team.length}/5)</h4>
+
+                                                {team.length === 0 && (
+                                                    <div className="text-center py-8 border-2 border-dashed border-gray-800 rounded-xl">
+                                                        <p className="text-gray-500">No friends added yet.</p>
+                                                    </div>
+                                                )}
+
+                                                {team.map((member: any, index: number) => (
+                                                    <div key={index} className="bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:border-blue-500/30 transition-colors">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg">
+                                                                {member.name?.[0] || "?"}
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="text-white font-bold">{member.name}</h4>
+                                                                <p className="text-gray-400 text-xs">{member.phone}</p>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (!user) return;
+                                                                const newTeam = team.filter((_, i) => i !== index);
+                                                                setTeam(newTeam);
+                                                                await updateDoc(doc(db, "users", user.uid), { "timetable.team": newTeam });
+                                                            }}
+                                                            className="text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-colors text-sm font-bold"
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                         <p className="text-[10px] text-gray-400 text-left">
                             * Uses "Tomorrow's" schedule. If today is booked, verify in Dashboard.

@@ -23,7 +23,8 @@ let currentKeyIndex = 0;
 
 // Use the standard model alias.
 const MODEL_CANDIDATES = [
-  "gemini-2.5-flash"
+  "gemini-2.5-flash",
+  "gemini-1.5-flash"
 ];
 
 // Helper to get a model instance with the CURRENT key
@@ -69,51 +70,59 @@ export interface QuizQuestion {
 }
 
 // GENERIC RETRY WRAPPER
-// Wraps any Gemini call with Key Rotation logic
+// Wraps any Gemini call with Key Rotation logic AND Model Fallback
 async function withKeyRotation<T>(
   operationName: string,
   operation: (model: any) => Promise<T>
 ): Promise<T> {
   let lastError: any = null;
 
-  // Try each key at least once (or more loops if needed, but let's prevent infinite loops)
-  // We'll allow up to API_KEYS.length + 1 attempts to ensure we try the next ones.
-  const maxAttempts = Math.max(1, API_KEYS.length) * 2;
+  // Try each model
+  for (const modelName of MODEL_CANDIDATES) {
+    // Try each key logic (simplified: just try current key, if quota -> rotate)
+    // We'll combine loops: External loop for Models, Internal logic for Keys/Retries.
+    // Actually, let's just retry a few times.
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const modelName = MODEL_CANDIDATES[0]; // Strict 2.5 flash
+    const maxAttempts = Math.max(1, API_KEYS.length) * 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const model = getModel(modelName);
+        console.log(`🤖 Attempting ${operationName} with model: ${modelName} (Key #${currentKeyIndex + 1})`);
+        return await operation(model);
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`⚠️ Error with ${modelName} on Key #${currentKeyIndex + 1}:`, error.message);
 
-    try {
-      const model = getModel(modelName);
-      return await operation(model);
-    } catch (error: any) {
-      lastError = error;
+        const isQuotaError = error.message?.includes("429") || error.message?.includes("Quota") || error.status === 429;
+        const isOverloaded = error.message?.includes("503") || error.message?.includes("overloaded") || error.status === 503;
 
-      const isQuotaError = error.message?.includes("429") || error.message?.includes("Quota") || error.status === 429;
-
-      if (isQuotaError) {
-        console.warn(`⚠️ Quota hit on Key #${currentKeyIndex + 1} (${API_KEYS[currentKeyIndex]?.slice(-4)}). Attempting rotation...`);
-        const switched = rotateKey();
-        if (!switched) {
-          console.error("❌ No other keys available to rotate.");
-          throw error; // Propagate if we can't switch
+        if (isQuotaError) {
+          console.warn(`⚠️ Quota hit. Rotating key...`);
+          if (!rotateKey()) throw error; // No more keys
+          continue; // Retry with new key
         }
-        // Wait a second before trying the new key to be safe
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        // If switched, loop continues and tries new key
-      } else {
-        // If it's NOT a quota error (e.g. 404 Model Not Found, or 500), 
-        // strictly speaking we might not want to rotate, but for robustness let's try ONE rotation just in case key is bad.
-        // But if user requested STRICT rotation only on exhaustion, we focus on 429.
-        // For now, let's throw on non-quota errors to fail fast (like Model Not Found).
-        console.error(`❌ Non-Quota Error on Key #${currentKeyIndex + 1}: ${error.message}`);
-        throw error;
+
+        if (isOverloaded) {
+          console.warn(`⚠️ Model ${modelName} overloaded. Falling back...`);
+          break; // Break internal loop to try next model
+        }
+
+        // If other error, maybe break and try next model?
+        // For now, assume 503 is the main reason to switch models. 
+        // If it's another error (e.g. 400), it might be request invalid, so don't retry blindly?
+        // But for safety, let's fallback on any 5xx.
+        if (error.status >= 500) {
+          break; // Try next model
+        }
+
+        throw error; // Throw text/parse errors directly
       }
     }
   }
 
   throw lastError;
 }
+
 
 export const generateQuizQuestion = async (
   language: string,
@@ -198,6 +207,66 @@ export const extractHolidays = async (file: File) => {
     });
   } catch (error: any) {
     console.error("Holiday Extraction Failed:", error);
+    throw error;
+  }
+};
+
+// Voice Command Parsing
+export const parseVoiceCommand = async (transcript: string, savedAddresses: any[]) => {
+  if (API_KEYS.length === 0) throw new Error("Key Missing");
+
+  const now = new Date();
+  const currentTime = now.toLocaleTimeString();
+
+  // Prepare context about saved addresses
+  // Prepare context about saved addresses
+  const addressContext = savedAddresses.map(a =>
+    `- "${a.name || a.type}": ${a.address} (${a.landmark || ""})`
+  ).join("\n");
+
+  const prompt = `
+    Act as a Booking Assistant for an Auto Rickshaw app.
+    Current Date/Time: ${now.toDateString()} ${currentTime}
+    
+    User Audio Transcript: "${transcript}"
+    
+    User's Saved Addresses:
+    ${addressContext}
+    
+    Task: Extract booking details.
+    1. Identify EXACT 'pickup' and 'drop' addresses. 
+       - If user says "Home", "College", "Work", match with Saved Addresses labels.
+       - Use the FULL address from Saved Addresses if a match is found (e.g. "My Home" -> "123 Street...").
+       - If no match, use the raw text.
+       - If user implies "Current Location" or "Here", set pickup to "CURRENT_LOCATION".
+    2. Identify 'rideType': "instant" (default) or "scheduled" (if a future time is mentioned).
+    3. If "scheduled", extract 'scheduledTime' (HH:MM AM/PM format).
+    4. Identify 'paymentMode': 
+       - **CRITICAL**: If transcript contains "credit", "credits", "wallet", "balance", return "credits".
+       - If transcript contains "sub", "subscription", "pass", return "subscription".
+       - If transcript contains "cash", "money", "pay later", return "cash".
+       - Otherwise, return null (let app default apply).
+    
+    Return STRICT JSON:
+    {
+        "pickup": "...",
+        "drop": "...",
+        "rideType": "instant" | "scheduled",
+        "scheduledTime": "..." | null,
+        "paymentMode": "cash" | "credits" | "subscription" | null,
+        "isAmbiguous": boolean
+    }
+    No markdown.
+    `;
+
+  try {
+    return await withKeyRotation("Voice Parsing", async (model) => {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+      return JSON.parse(text);
+    });
+  } catch (error: any) {
+    console.error("Voice Parsing Failed:", error);
     throw error;
   }
 };
