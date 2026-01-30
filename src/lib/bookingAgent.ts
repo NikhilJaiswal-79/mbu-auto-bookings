@@ -59,11 +59,18 @@ export async function checkAndTriggerAutoBooking(user: any, force: boolean = fal
 
         // 6. CHECK HOLIDAYS
         const isHoliday = holidays.find((h: any) => h.date === tomorrowDateStr);
-        if (isHoliday) {
+        if (isHoliday && !force) {
             return { skipped: true, reason: `Holiday Tomorrow: ${isHoliday.name}` };
         }
 
-        const schedule = timetable[tomorrowDayName];
+        let schedule = timetable[tomorrowDayName];
+
+        // Fix: Use Dummy Schedule if Force Run & No Class
+        if ((!schedule || !schedule.start) && force) {
+            console.log("Force Run: Using dummy schedule (09:00 AM - 05:00 PM)");
+            schedule = { start: "09:00 AM", end: "05:00 PM" };
+        }
+
         if (!schedule || !schedule.start) {
             return { skipped: true, reason: `No class on ${tomorrowDayName}` };
         }
@@ -82,40 +89,90 @@ export async function checkAndTriggerAutoBooking(user: any, force: boolean = fal
         const eveningTime = calculateOffsetTime(schedule.end, eveningOffset, false);
         const collegeAddress = userData.collegeName || "MBU Campus";
 
+        // Fix: Scope variable outside transaction
+        // Fix: Scope variable outside transaction
+        let finalPassengerCount = 0;
+        let debugLogs: string[] = []; // Collect logs
+
         // 9. TRANSACTION: Check Credits & Deduct & Generate Tokens
         await runTransaction(db, async (transaction) => {
+            // ... (existing code for stats and credits) ...
+
+            // Read Candidates logic... (retained inside transaction for safety)
+            // But we can't easily hoist the whole array logic without refactoring.
+            // Simplified Fix: Assign count at end of transaction.
+
+            // ... (Start of inner logic)
             // Read Global Stats
             const statsRef = doc(db, "stats", "global");
             const statsDoc = await transaction.get(statsRef);
             let currentToken = statsDoc.exists() ? statsDoc.data().currentToken || 0 : 0;
 
-            // Read Candidates Data to check credits & existing bookings
-            // Note: We can't query "bookings" inside transaction easily for all users.
-            // We assume the "check existing" above handles the main user.
-            // For team members, if they have another booking, we might double book them.
-            // ideal: read their profiles.
-
             const validPassengers: any[] = [];
 
+            debugLogs = []; // Reset inside transaction retries
+
+            debugLogs = []; // Reset inside transaction retries
+
+            // Phase 1: PRE-READ all candidate docs
+            const candidateSnaps: { candidate: any, ref: any, snap: any }[] = [];
+
             for (const candidate of candidates) {
-                if (!candidate.uid) continue;
+                if (!candidate.uid) {
+                    debugLogs.push(`${candidate.name}: No UID`);
+                    continue;
+                }
                 const ref = doc(db, "users", candidate.uid);
                 const snap = await transaction.get(ref);
+                candidateSnaps.push({ candidate, ref, snap });
+            }
 
+            // Phase 2: PROCESS & WRITE
+            for (const { candidate, ref, snap } of candidateSnaps) {
                 if (snap.exists()) {
                     const data = snap.data();
                     const credits = data.credits || 0;
 
                     if (credits >= 2) {
-                        // DEDUCT 2 CREDITS
                         transaction.update(ref, { credits: credits - 2 });
+
+                        // Fix: USE FRESH address/lat/lng from snapshot, not stale 'candidate' object
+                        // Fix: USE FRESH address/lat/lng from snapshot, prioritising 'Home'
+                        // If multiple addresses exist, we prefer the one labeled 'Home'. 
+                        // If multiple 'Home' addresses exist (e.g. old & new), we take the LAST one (assuming recent add).
+                        const saved = data.savedAddresses || [];
+                        const homeAddr = saved.filter((a: any) => a.type === "Home").pop() || saved[0] || {};
+
+                        const freshPickup = homeAddr.address || candidate.pickup;
+                        const freshLat = homeAddr.lat || candidate.lat;
+                        const freshLng = homeAddr.lng || candidate.lng;
+
+                        // Debug Log for Address Issues
+                        if (force) {
+                            console.log(`Agent Debug [${candidate.name}]:`, {
+                                savedAddresses: data.savedAddresses,
+                                usedPickup: freshPickup
+                            });
+                        }
+
                         validPassengers.push({
                             ...candidate,
+                            pickup: freshPickup,
+                            lat: freshLat,
+                            lng: freshLng,
                             status: "CONFIRMED"
                         });
+
+                        if (force && credits < 2) {
+                            debugLogs.push(`${candidate.name}: CONFIRMED (Force Bypass, Cr:${credits})`);
+                        } else {
+                            debugLogs.push(`${candidate.name}: CONFIRMED (Cr:${credits})`);
+                        }
                     } else {
-                        console.log(`Skipping ${candidate.name}: Insufficient Credits`);
+                        debugLogs.push(`${candidate.name}: SKIPPED (Low Credits: ${credits})`);
                     }
+                } else {
+                    debugLogs.push(`${candidate.name}: SKIPPED (Doc Not Found)`);
                 }
             }
 
@@ -123,40 +180,39 @@ export async function checkAndTriggerAutoBooking(user: any, force: boolean = fal
                 throw new Error("No valid passengers with sufficient credits.");
             }
 
-            // Create 2 Rides (Morning & Evening)
+            // Update outer scope variable
+            finalPassengerCount = validPassengers.length;
+
+            // ... (Rest of transaction logic for booking creation remains same)
             const token1 = currentToken + 1;
             const token2 = currentToken + 2;
             transaction.set(statsRef, { currentToken: token2 }, { merge: true });
 
-            // Waypoints (All pickups)
-            // Filter unique pickups
             const uniqueWaypoints = Array.from(new Set(validPassengers.map(p => p.pickup)))
                 .map(addr => {
                     const p = validPassengers.find(vp => vp.pickup === addr);
                     return { address: addr, lat: p?.lat, lng: p?.lng, label: p?.name };
                 });
 
-            // MBU Coords (Approx)
             const collegeCoords = { lat: 13.6288, lng: 79.4192 };
             const firstPassenger = validPassengers[0];
             const startCoords = { lat: firstPassenger.lat || 0, lng: firstPassenger.lng || 0 };
 
-            // Ride 1: Morning (Home -> College)
             const ride1Ref = doc(collection(db, "bookings"));
             transaction.set(ride1Ref, {
-                studentId: userId, // Main booker
+                studentId: userId,
                 passengerUids: validPassengers.map(p => p.uid),
-                passengers: validPassengers, // Full details
+                passengers: validPassengers,
                 isGroupRide: validPassengers.length > 1,
                 waypoints: uniqueWaypoints,
-                pickup: uniqueWaypoints.map(w => w.address).join(" + "), // summary
+                pickup: uniqueWaypoints.map(w => w.address).join(" + "),
                 drop: collegeAddress,
                 pickupCoords: startCoords,
                 dropCoords: collegeCoords,
                 rideType: "scheduled",
                 scheduledDate: tomorrowDateStr,
                 scheduledTime: morningTime,
-                paymentMode: "Credits", // Forced for group auto-booking
+                paymentMode: "Credits",
                 status: "PENDING",
                 createdAt: new Date().toISOString(),
                 tokenNumber: token1,
@@ -164,10 +220,6 @@ export async function checkAndTriggerAutoBooking(user: any, force: boolean = fal
                 tripType: "MORNING_COMMUTE"
             });
 
-            // Ride 2: Evening (College -> Home)
-            // Reverse waypoints for return trip? 
-            // We'll keep the same uniqueWaypoints list, let Driver decide or map route will just visit them.
-            // Ideally should be reversed but for now simple listing is fine.
             const ride2Ref = doc(collection(db, "bookings"));
             transaction.set(ride2Ref, {
                 studentId: userId,
@@ -177,8 +229,8 @@ export async function checkAndTriggerAutoBooking(user: any, force: boolean = fal
                 pickup: collegeAddress,
                 drop: uniqueWaypoints.map(w => w.address).join(" + "),
                 pickupCoords: collegeCoords,
-                dropCoords: startCoords, // Return to first passenger's area (or last?) - Simplification: Mirror start
-                waypoints: uniqueWaypoints, // Driver can optimize drop order
+                dropCoords: startCoords,
+                waypoints: uniqueWaypoints,
                 rideType: "scheduled",
                 scheduledDate: tomorrowDateStr,
                 scheduledTime: eveningTime,
@@ -197,13 +249,18 @@ export async function checkAndTriggerAutoBooking(user: any, force: boolean = fal
             timestamp: new Date().toISOString(),
             morningTime,
             eveningTime,
-            teamSize: candidates.length
+            teamSize: candidates.length,
+            logs: debugLogs
         });
 
-        return { success: true, message: `Booked for Team! (${tomorrowDayName})` };
+        const logStr = debugLogs.join("\n");
+        return {
+            success: true,
+            message: `Booked for Team! (${tomorrowDayName}, Size: ${finalPassengerCount})\n\nDB Info: Found ${candidates.length - 1} friend(s) in database.\n\nDetails:\n${logStr}`
+        };
 
     } catch (error: any) {
-        console.error("Agent Error:", error);
+        console.warn("Agent Error (Handled):", error.message);
         return { error: error.message };
     }
 }
@@ -258,7 +315,29 @@ export async function resetDailyLog(user: any) {
     try {
         await setDoc(doc(db, "daily_logs", logId), { reset: true }); // Overwrite first
         await deleteDoc(doc(db, "daily_logs", logId));
-        return { success: true, message: "Agent memory cleared for today." };
+
+        // ALSO CLEAR TOMORROW'S BOOKING (For easier testing)
+        // Only if it's an auto-booking
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowDateStr = tomorrow.toISOString().split("T")[0];
+
+        const q = query(
+            collection(db, "bookings"),
+            where("scheduledDate", "==", tomorrowDateStr),
+            where("passengerUids", "array-contains", userId),
+            where("isAutoBooked", "==", true) // Safety check: only delete auto-bookings
+        );
+        const snap = await getDocs(q);
+
+        // Correctly await all deletions
+        const deletePromises = snap.docs.map(d => {
+            console.log("Reset: Deleting existing booking", d.id);
+            return deleteDoc(d.ref);
+        });
+        await Promise.all(deletePromises);
+
+        return { success: true, message: "Agent memory & existing bookings reset." };
     } catch (e: any) {
         return { error: e.message };
     }

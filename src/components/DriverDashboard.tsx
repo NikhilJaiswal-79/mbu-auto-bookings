@@ -1038,21 +1038,57 @@ export default function DriverDashboard() {
                                 <div key={req.id} className="bg-yellow-900/10 rounded-2xl border border-yellow-500/30 overflow-hidden relative transition-all">
                                     <div className="p-6 space-y-4">
                                         <div>
-                                            <span className="inline-flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">
-                                                <span>📅</span> SCHEDULED
-                                            </span>
+                                            <div className="flex gap-2">
+                                                <span className="inline-flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">
+                                                    <span>📅</span> SCHEDULED
+                                                </span>
+                                                {req.isGroupRide && (
+                                                    <span className="inline-flex items-center gap-2 bg-purple-900/30 border border-purple-500 text-purple-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                                                        <span>👥</span> Group Ride ({req.passengers?.length || "Team"})
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div className="space-y-3">
-                                            <div className="flex items-start gap-3">
-                                                <div className="mt-1 text-blue-500">📍</div>
-                                                <div><span className="text-gray-400 font-bold mr-2">Pickup:</span><span className="text-gray-200 font-medium">{req.pickup}</span></div>
-                                            </div>
-                                            <div className="flex items-start gap-3">
-                                                <div className="mt-1 text-orange-500">🏁</div>
-                                                <div><span className="text-gray-400 font-bold mr-2">Drop:</span><span className="text-gray-200 font-medium">{req.drop}</span></div>
-                                            </div>
+                                            {req.isGroupRide && req.waypoints && req.waypoints.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    <div className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Route & Stops</div>
+                                                    {req.waypoints.map((wp: any, idx: number) => (
+                                                        <div key={idx} className="flex items-start gap-2 text-sm">
+                                                            <span className="text-purple-500 font-bold">{idx + 1}.</span>
+                                                            <div className="flex-1">
+                                                                <span className="text-gray-300">{wp.address}</span>
+                                                                {wp.label && <span className="text-gray-500 text-xs ml-2">({wp.label})</span>}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    <div className="flex items-start gap-2 text-sm mt-2 pt-2 border-t border-gray-800">
+                                                        <span className="text-orange-500 font-bold">🏁</span>
+                                                        <span className="text-gray-200 font-bold">{req.drop}</span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="mt-1 text-blue-500">📍</div>
+                                                        <div><span className="text-gray-400 font-bold mr-2">Pickup:</span><span className="text-gray-200 font-medium">{req.pickup}</span></div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="mt-1 text-orange-500">🏁</div>
+                                                        <div><span className="text-gray-400 font-bold mr-2">Drop:</span><span className="text-gray-200 font-medium">{req.drop}</span></div>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
+
+                                        {/* Map Button for Scheduled Rides */}
+                                        <button
+                                            onClick={() => setSelectedRideForMap(req)}
+                                            className="text-xs bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white px-3 py-1.5 rounded-lg border border-gray-700 transition-all font-bold flex items-center gap-1 w-fit"
+                                        >
+                                            <span>🗺️</span> Check Map
+                                        </button>
 
                                         <div className="flex items-center gap-4 pt-2">
                                             {/* Large Time Display */}

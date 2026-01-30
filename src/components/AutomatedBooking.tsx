@@ -221,72 +221,21 @@ export default function AutomatedBooking() {
                                 </div>
                             </div>
 
-                            {/* TEAM TAB */}
-                            {activeTab === "team" && (
-                                <div className="space-y-6 animate-fade-in">
-                                    <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl relative overflow-hidden">
-                                        <div className="relative z-10">
-                                            <h3 className="text-2xl font-black text-white mb-2">My Travel Team 👥</h3>
-                                            <p className="text-gray-400 text-sm mb-6">Add up to 5 friends. We'll pick everyone up in one auto!</p>
-
-                                            {/* Add Friend */}
-                                            <div className="flex gap-4 mb-8">
-                                                <input
-                                                    type="tel"
-                                                    placeholder="Enter Friend's Phone Number"
-                                                    value={friendPhone}
-                                                    onChange={(e) => setFriendPhone(e.target.value)}
-                                                    className="flex-1 bg-gray-800 text-white p-4 rounded-xl border border-gray-700 outline-none focus:border-blue-500 font-mono text-lg"
-                                                />
-                                                <button
-                                                    onClick={handleAddFriend}
-                                                    disabled={searchingFriend}
-                                                    className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
-                                                >
-                                                    {searchingFriend ? "Searching..." : "Add Friend"}
-                                                </button>
-                                            </div>
-
-                                            {/* Team List */}
-                                            <div className="space-y-4">
-                                                <h4 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Team Members ({team.length}/5)</h4>
-
-                                                {team.length === 0 && (
-                                                    <div className="text-center py-8 border-2 border-dashed border-gray-800 rounded-xl">
-                                                        <p className="text-gray-500">No friends added yet.</p>
-                                                    </div>
-                                                )}
-
-                                                {team.map((member: any, index: number) => (
-                                                    <div key={index} className="bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:border-blue-500/30 transition-colors">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg">
-                                                                {member.name?.[0] || "?"}
-                                                            </div>
-                                                            <div>
-                                                                <h4 className="text-white font-bold">{member.name}</h4>
-                                                                <p className="text-gray-400 text-xs">{member.phone}</p>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            onClick={async () => {
-                                                                if (!user) return;
-                                                                const newTeam = team.filter((_, i) => i !== index);
-                                                                setTeam(newTeam);
-                                                                await updateDoc(doc(db, "users", user.uid), { "timetable.team": newTeam });
-                                                            }}
-                                                            className="text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-colors text-sm font-bold"
-                                                        >
-                                                            Remove
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleResetAgent}
+                                    className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition-transform active:scale-95"
+                                    title="Clear 'Already Booked' Log"
+                                >
+                                    🧹 Reset
+                                </button>
+                                <button
+                                    onClick={handleTestAgent}
+                                    className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition-transform active:scale-95"
+                                >
+                                    ⚡ Force Run
+                                </button>
+                            </div>
                         </div>
                         <p className="text-[10px] text-gray-400 text-left">
                             * Uses "Tomorrow's" schedule. If today is booked, verify in Dashboard.
@@ -295,9 +244,8 @@ export default function AutomatedBooking() {
                     </div>
                 </div>
 
-                {/* Tabs */}
                 <div className="flex justify-center gap-2 mt-8 bg-black/20 p-1 rounded-xl w-fit mx-auto backdrop-blur-sm">
-                    {["timetable", "holidays", "leaves", "settings"].map((tab) => (
+                    {["timetable", "team", "holidays", "leaves", "settings"].map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab as any)}
@@ -376,6 +324,73 @@ export default function AutomatedBooking() {
                                 })}
                         </div>
                     )}
+                </div>
+            )}
+
+
+            {/* TEAM TAB */}
+            {activeTab === "team" && (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl relative overflow-hidden">
+                        <div className="relative z-10">
+                            <h3 className="text-2xl font-black text-white mb-2">My Travel Team 👥</h3>
+                            <p className="text-gray-400 text-sm mb-6">Add up to 5 friends. We'll pick everyone up in one auto!</p>
+
+                            {/* Add Friend */}
+                            <div className="flex gap-4 mb-8">
+                                <input
+                                    type="tel"
+                                    placeholder="Enter Friend's Phone Number"
+                                    value={friendPhone}
+                                    onChange={(e) => setFriendPhone(e.target.value)}
+                                    className="flex-1 bg-gray-800 text-white p-4 rounded-xl border border-gray-700 outline-none focus:border-blue-500 font-mono text-lg"
+                                />
+                                <button
+                                    onClick={handleAddFriend}
+                                    disabled={searchingFriend}
+                                    className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
+                                >
+                                    {searchingFriend ? "Searching..." : "Add Friend"}
+                                </button>
+                            </div>
+
+                            {/* Team List */}
+                            <div className="space-y-4">
+                                <h4 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Team Members ({team.length}/5)</h4>
+
+                                {team.length === 0 && (
+                                    <div className="text-center py-8 border-2 border-dashed border-gray-800 rounded-xl">
+                                        <p className="text-gray-500">No friends added yet.</p>
+                                    </div>
+                                )}
+
+                                {team.map((member: any, index: number) => (
+                                    <div key={index} className="bg-gray-800 p-4 rounded-2xl flex items-center justify-between border border-gray-700 hover:border-blue-500/30 transition-colors">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg">
+                                                {member.name?.[0] || "?"}
+                                            </div>
+                                            <div>
+                                                <h4 className="text-white font-bold">{member.name}</h4>
+                                                <p className="text-gray-400 text-xs">{member.phone}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                if (!user) return;
+                                                const newTeam = team.filter((_, i) => i !== index);
+                                                setTeam(newTeam);
+                                                await updateDoc(doc(db, "users", user.uid), { "timetable.team": newTeam });
+                                            }}
+                                            className="text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-colors text-sm font-bold"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 

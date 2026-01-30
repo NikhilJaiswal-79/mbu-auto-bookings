@@ -414,6 +414,8 @@ export default function StudentDashboard() {
                 if (result?.success) {
                     showToast("🤖 Auto-Agent: " + result.message, "success");
                     // Refresh bookings? The listener above handles it.
+                } else if (result?.error) {
+                    showToast("⚠️ " + result.error, "error");
                 }
             }, 5000);
         }
@@ -505,7 +507,11 @@ export default function StudentDashboard() {
 
         const timer = setTimeout(async () => {
             try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=5`);
+                // Encode query to prevent URL errors
+                const encodedQuery = encodeURIComponent(query);
+                // console.log("Fetching suggestions for:", query); 
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodedQuery}&limit=5`);
+                if (!res.ok) throw new Error("Nominatim API Error");
                 const apiData = await res.json();
 
                 // Combine Saved + API suggestions
@@ -515,7 +521,8 @@ export default function StudentDashboard() {
 
                 setSuggestions([...matches, ...uniqueApi]);
             } catch (error) {
-                console.error("Autocomplete error", error);
+                // Silently fail or log debug only
+                // console.debug("Autocomplete fetch failed:", error);
                 setSuggestions(matches); // Fallback to just matches
             }
         }, 300); // Reduced delay for better responsiveness
@@ -602,7 +609,15 @@ export default function StudentDashboard() {
         };
 
         const updatedAddresses = [...savedAddresses, addressEntry];
-        await updateDoc(doc(db, "users", user.uid), { savedAddresses: updatedAddresses });
+
+        // Fix: Also update the top-level homeAddress field if this is a "Home" address
+        // This ensures isOfficialRoute() can validate against the new address.
+        const updateData: any = { savedAddresses: updatedAddresses };
+        if (newAddress.type === "Home") {
+            updateData.homeAddress = newAddress.address;
+        }
+
+        await updateDoc(doc(db, "users", user.uid), updateData);
         setSavedAddresses(updatedAddresses);
         setNewAddress({ type: "Home", customName: "", address: "", landmark: "", lat: 0, lng: 0 });
         setAddressModalView("list"); // Go back to list
