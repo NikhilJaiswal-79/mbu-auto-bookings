@@ -238,7 +238,8 @@ export default function RideSharing() {
     };
 
     return (
-        <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-xl">
+        <div className="glass-card p-8 rounded-[2rem] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl -z-10" />
             {/* TABS */}
             <div className="flex gap-2 mb-6 bg-gray-800 p-1 rounded-xl">
                 {["find", "offer", "history"].map((m) => (

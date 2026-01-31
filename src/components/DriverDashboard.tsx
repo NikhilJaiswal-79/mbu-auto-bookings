@@ -406,39 +406,36 @@ export default function DriverDashboard() {
     return (
         <div className="space-y-6">
             {/* Header with Nav Buttons */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-900/50 p-6 rounded-3xl border border-white/5 backdrop-blur-md">
                 <div>
-                    <h1 className="text-2xl font-black text-white flex items-center gap-2">
-                        <span className="text-3xl">🛺</span> Driver Dashboard
+                    <h1 className="text-3xl font-black text-white flex items-center gap-3">
+                        <span className="text-4xl">🛺</span> Driver Dashboard
                     </h1>
-                    <p className="text-gray-400 text-sm">Welcome back, {userProfile?.name}</p>
+                    <p className="text-gray-400 text-sm mt-1 ml-1">Welcome back, <span className="text-white font-bold">{userProfile?.name}</span></p>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <button onClick={() => setShowEarnings(true)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold shadow-lg shadow-green-500/20 transition-all active:scale-95 flex items-center gap-2">
-                        <span>💰</span> Earnings
+                <div className="flex items-center gap-3">
+                    <button onClick={() => setShowEarnings(true)} className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white px-6 py-3 rounded-2xl text-sm font-bold shadow-lg shadow-green-900/20 transition-all active:scale-95 flex items-center gap-2">
+                        <span className="text-xl">💰</span> <span className="uppercase tracking-wide">Earnings</span>
                     </button>
-                    <button onClick={() => setShowEditProfile(true)} className="text-blue-400 hover:text-white text-sm font-semibold underline">
+                    <button onClick={() => setShowEditProfile(true)} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-3 rounded-2xl text-sm font-bold transition-all border border-gray-700">
                         Edit Profile
                     </button>
-                    <button onClick={() => setShowHistory(true)} className="text-gray-400 hover:text-white text-sm font-semibold underline">
+                    <button onClick={() => setShowHistory(true)} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-3 rounded-2xl text-sm font-bold transition-all border border-gray-700">
                         History
-                    </button>
-                    <button onClick={logout} className="text-red-400 hover:text-red-300 text-sm font-semibold underline">
-                        Logout
                     </button>
                 </div>
             </div>
             {/* Earnings Modal */}
             {showEarnings && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-gray-900 w-full max-w-2xl rounded-2xl border border-gray-800 shadow-2xl overflow-y-auto max-h-[90vh]">
-                        <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-fade-in">
+                    <div className="bg-gray-950/80 w-full max-w-4xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5 backdrop-blur-md sticky top-0 z-10">
                             <div>
-                                <h2 className="text-2xl font-black text-white">Earnings & Insights 💰</h2>
-                                <p className="text-gray-400 text-sm">Track your performance</p>
+                                <h2 className="text-3xl font-black text-white">Earnings & Insights 💰</h2>
+                                <p className="text-gray-400 text-sm mt-1">Detailed performance analytics</p>
                             </div>
-                            <button onClick={() => setShowEarnings(false)} className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-lg">✕</button>
+                            <button onClick={() => setShowEarnings(false)} className="w-10 h-10 rounded-full bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-white transition-colors">✕</button>
                         </div>
 
                         {/* View Tabs */}

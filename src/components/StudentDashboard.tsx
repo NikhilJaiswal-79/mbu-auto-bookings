@@ -969,26 +969,25 @@ export default function StudentDashboard() {
 
         return (
             <div className="space-y-6 animate-fade-in">
-                <div className="bg-green-900/20 border border-green-500/50 p-6 rounded-2xl text-center">
-                    <h2 className="text-2xl font-bold text-green-400 mb-2">Ride in Progress 🛺</h2>
-                    <p className="text-gray-300">Heading to <span className="text-white font-bold">{activeRide.drop}</span></p>
-                    <div className="flex justify-center gap-4 mt-4 mb-2">
-                        <span className="bg-gray-800 px-3 py-1 rounded text-sm text-gray-400">Token: <span className="text-white font-bold">{activeRide.tokenNumber}</span></span>
-                        <span className="bg-gray-800 px-3 py-1 rounded text-sm text-gray-400">Vehicle: <span className="text-white font-bold">{activeRide.vehicleNumber || "N/A"}</span></span>
+                <div className="glass-card bg-green-900/10 border-green-500/30 p-8 rounded-[2rem] text-center relative overflow-hidden">
+                    <div className="absolute top-0 w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent animate-pulse" />
+                    <h2 className="text-3xl font-black text-green-400 mb-2 tracking-tight">Ride in Progress 🛺</h2>
+                    <p className="text-gray-300 text-lg">Heading to <span className="text-white font-bold">{activeRide.drop}</span></p>
+                    <div className="flex justify-center gap-4 mt-6 mb-4">
+                        <span className="bg-black/40 px-4 py-2 rounded-xl text-sm text-gray-400 border border-white/5">Token: <span className="text-white font-bold">{activeRide.tokenNumber}</span></span>
+                        <span className="bg-black/40 px-4 py-2 rounded-xl text-sm text-gray-400 border border-white/5">Vehicle: <span className="text-white font-bold">{activeRide.vehicleNumber || "N/A"}</span></span>
                     </div>
 
                     {/* Driver Details */}
-                    <div className="mt-4 bg-[#111] p-4 rounded-xl border border-gray-700 text-left">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Driver Details</p>
-                        <div className="flex justify-between items-center">
-                            <div>
-                                <p className="text-white font-bold text-lg">{activeRide.driverName}</p>
-                                <p className="text-blue-400 font-mono text-sm">{activeRide.driverPhone}</p>
-                            </div>
-                            <a href={`tel:${activeRide.driverPhone}`} className="bg-green-600 hover:bg-green-500 text-white p-3 rounded-full shadow-lg transition-transform active:scale-95 cursor-pointer">
-                                📞
-                            </a>
+                    <div className="mt-6 bg-black/40 p-6 rounded-2xl border border-white/5 text-left flex justify-between items-center group hover:border-green-500/30 transition-all">
+                        <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Driver Details</p>
+                            <p className="text-white font-bold text-xl">{activeRide.driverName}</p>
+                            <p className="text-blue-400 font-mono text-sm">{activeRide.driverPhone}</p>
                         </div>
+                        <a href={`tel:${activeRide.driverPhone}`} className="bg-green-600 hover:bg-green-500 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg shadow-green-900/20 transition-transform active:scale-95 cursor-pointer">
+                            📞
+                        </a>
                     </div>
                 </div>
 
@@ -1018,6 +1017,7 @@ export default function StudentDashboard() {
             {/* Toast Notification */}
             {toast && <NotificationToast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
+            {/* Voice Agent */}
             {/* Voice Agent */}
             <VoiceBookingAgent
                 onBookingParsed={handleVoiceParsed}
@@ -1475,41 +1475,43 @@ export default function StudentDashboard() {
             )}
 
             {/* Header / Welcome */}
-            <div className="flex justify-between items-center mb-8 pt-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 pt-6 gap-6">
                 <div>
-                    <h1 className="text-3xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Welcome, {userProfile?.name?.split(" ")[0]}! 👋</h1>
-                    <div className="flex items-center gap-2 mt-1">
-                        <p className="text-gray-400 text-sm">Manage your bookings</p>
+                    <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 animate-slide-up">
+                        Hi, {userProfile?.name?.split(" ")[0]}! 👋
+                    </h1>
+                    <div className="flex items-center gap-3 mt-2 animate-slide-up stagger-1">
+                        <p className="text-gray-400 font-medium">Ready to ride?</p>
                         {servingToken && (currentBookingId || activeRide) && (
-                            <span className="bg-yellow-500/20 text-yellow-500 text-xs font-bold px-2 py-0.5 rounded border border-yellow-500/30 animate-pulse">
-                                Now Serving: Token #{servingToken}
+                            <span className="glass-card bg-yellow-500/10 text-yellow-400 text-xs font-bold px-3 py-1 rounded-full border-yellow-500/30 animate-pulse flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
+                                Serving #{servingToken}
                             </span>
                         )}
                     </div>
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={() => window.location.href = '/'} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 border border-gray-700">
+                <div className="flex gap-3 animate-slide-up stagger-2">
+                    <button onClick={() => window.location.href = '/'} className="btn-glass px-5 py-2.5 rounded-xl text-sm font-bold text-gray-400 hover:text-white hover:bg-white/10 transition-all border border-transparent hover:border-white/20">
                         Home
                     </button>
-                    <button onClick={() => setActiveTab("home")} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-500/20">
+                    <button onClick={() => setActiveTab("home")} className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg ${activeTab === "home" ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-500/40 scale-105 border border-blue-400/50" : "glass-card text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30"}`}>
                         Dashboard
                     </button>
                     <button
                         onClick={() => setActiveTab("timetable")}
-                        className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 border border-gray-700"
+                        className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === "timetable" ? "bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-teal-500/40 scale-105 border border-teal-400/50" : "glass-card text-gray-400 hover:text-teal-400 hover:bg-teal-500/10 hover:border-teal-500/30"}`}
                     >
                         Timetable
                     </button>
-                    {/* <button
+                    <button
                         onClick={() => setActiveTab('share')}
-                        className="bg-green-700 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 shadow-lg shadow-green-500/20"
+                        className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === "share" ? "bg-gradient-to-r from-green-500 to-lime-500 text-white shadow-green-500/40 scale-105 border border-green-400/50" : "glass-card text-gray-400 hover:text-green-400 hover:bg-green-500/10 hover:border-green-500/30"}`}
                     >
                         Ride Share
-                    </button> */}
-                    {/* Logout Button Restored */}
+                    </button>
                     <button
                         onClick={() => logout()}
-                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 shadow-lg shadow-red-500/20"
+                        className="glass-card text-red-400 hover:text-white hover:bg-red-600 hover:border-red-500 hover:shadow-[0_0_20px_rgba(239,68,68,0.4)] px-5 py-2.5 rounded-xl text-sm font-bold transition-all border border-red-500/20"
                     >
                         Logout
                     </button>
@@ -1524,58 +1526,62 @@ export default function StudentDashboard() {
                     {/* Wallet & Credits Cards (Moved Above Quick Actions) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
                         {/* Subscription Card */}
-                        <div onClick={() => { setWalletView("subscription"); setShowWallet(true); }} className="bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-3xl border border-gray-700 relative overflow-hidden group cursor-pointer hover:border-blue-500/50 transition-all">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <span className="text-6xl">💳</span>
+                        <div onClick={() => { setWalletView("subscription"); setShowWallet(true); }} className="glass-card p-8 rounded-[2rem] relative overflow-hidden group cursor-pointer border-none bg-gradient-to-br from-blue-900/20 to-purple-900/20">
+                            <div className="absolute -right-6 -top-6 w-32 h-32 bg-blue-500/20 rounded-full blur-2xl group-hover:bg-blue-500/30 transition-all" />
+                            <div className="absolute top-6 right-6 p-2 rounded-full bg-white/5 border border-white/10 group-hover:rotate-12 transition-transform">
+                                <span className="text-2xl">📅</span>
                             </div>
-                            <p className="text-gray-400 text-xs font-bold tracking-widest uppercase mb-2">Active Subscription</p>
-                            <h3 className="text-3xl font-bold text-white mb-1 capitalize">{subscription?.active ? subscription.type : "No Plan"}</h3>
-                            <p className="text-gray-400 text-sm">{subscription?.active ? `Expires in ${Math.ceil((new Date(subscription.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days` : "Tap to browse plans"}</p>
+                            <p className="text-blue-300 text-xs font-black tracking-widest uppercase mb-4">Active Subscription</p>
+                            <h3 className="text-4xl font-black text-white mb-2 capitalize tracking-tight">{subscription?.active ? subscription.type : "Free Plan"}</h3>
+                            <p className="text-gray-400 text-sm font-medium">{subscription?.active ? `Expires in ${Math.ceil((new Date(subscription.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days` : "Tap to browse premium plans"}</p>
                         </div>
 
                         {/* Credits Card */}
-                        <div onClick={() => { setWalletView("credits"); setShowWallet(true); }} className="bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-3xl border border-gray-700 relative overflow-hidden group cursor-pointer hover:border-yellow-500/50 transition-all">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <span className="text-6xl">🪙</span>
+                        <div onClick={() => { setWalletView("credits"); setShowWallet(true); }} className="glass-card p-8 rounded-[2rem] relative overflow-hidden group cursor-pointer border-none bg-gradient-to-br from-yellow-900/20 to-orange-900/20">
+                            <div className="absolute -right-6 -top-6 w-32 h-32 bg-yellow-500/20 rounded-full blur-2xl group-hover:bg-yellow-500/30 transition-all" />
+                            <div className="absolute top-6 right-6 p-2 rounded-full bg-white/5 border border-white/10 group-hover:rotate-12 transition-transform">
+                                <span className="text-2xl">🪙</span>
                             </div>
-                            <p className="text-gray-400 text-xs font-bold tracking-widest uppercase mb-2">Available Credits</p>
-                            <h3 className="text-4xl font-black text-white mb-1">{credits} <span className="text-lg text-gray-400 font-medium">Credits</span></h3>
-                            <p className="text-blue-400 text-sm font-semibold group-hover:underline">Purchase more</p>
+                            <p className="text-yellow-300 text-xs font-black tracking-widest uppercase mb-4">Available Credits</p>
+                            <h3 className="text-5xl font-black text-white mb-2 tracking-tight">{credits}</h3>
+                            <span className="inline-flex items-center gap-2 text-yellow-400/80 text-sm font-bold uppercase tracking-wide group-hover:text-yellow-400 transition-colors">
+                                Top Up Wallet <span className="group-hover:translate-x-1 transition-transform">→</span>
+                            </span>
                         </div>
                     </div>
 
                     {/* Quick Actions Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <button onClick={() => setShowBookingModal(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group">
-                            <div className="w-12 h-12 bg-blue-900/30 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <span className="text-2xl">🗓️</span>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <button onClick={() => setShowBookingModal(true)} className="glass-card bg-blue-900/10 border-blue-500/30 hover:bg-blue-500/20 p-6 rounded-3xl flex flex-col items-center justify-center gap-4 transition-all group hover:-translate-y-1 shadow-[0_0_20px_rgba(59,130,246,0.15)]">
+                            <div className="w-14 h-14 bg-blue-500/20 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(59,130,246,0.4)]">
+                                <span className="text-3xl drop-shadow-lg">🗓️</span>
                             </div>
-                            <span className="font-semibold text-gray-300 group-hover:text-white">Book Now</span>
+                            <span className="font-bold text-gray-200 group-hover:text-white">Book Ride</span>
                         </button>
-                        <button onClick={() => setShowSaveAddressModal(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group">
-                            <div className="w-12 h-12 bg-purple-900/30 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <span className="text-2xl">🏠</span>
+                        <button onClick={() => setShowSaveAddressModal(true)} className="glass-card bg-purple-900/10 border-purple-500/30 hover:bg-purple-500/20 p-6 rounded-3xl flex flex-col items-center justify-center gap-4 transition-all group hover:-translate-y-1 shadow-[0_0_20px_rgba(168,85,247,0.15)]">
+                            <div className="w-14 h-14 bg-purple-500/20 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(168,85,247,0.4)]">
+                                <span className="text-3xl drop-shadow-lg">🏠</span>
                             </div>
-                            <span className="font-semibold text-gray-300 group-hover:text-white">Saved Addresses</span>
+                            <span className="font-bold text-gray-200 group-hover:text-white">Addresses</span>
                         </button>
-                        <button onClick={() => setShowHistory(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group">
-                            <div className="w-12 h-12 bg-orange-900/30 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <span className="text-2xl">📜</span>
+                        <button onClick={() => setShowHistory(true)} className="glass-card bg-orange-900/10 border-orange-500/30 hover:bg-orange-500/20 p-6 rounded-3xl flex flex-col items-center justify-center gap-4 transition-all group hover:-translate-y-1 shadow-[0_0_20px_rgba(249,115,22,0.15)]">
+                            <div className="w-14 h-14 bg-orange-500/20 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(249,115,22,0.4)]">
+                                <span className="text-3xl drop-shadow-lg">📜</span>
                             </div>
-                            <span className="font-semibold text-gray-300 group-hover:text-white">Ride History</span>
+                            <span className="font-bold text-gray-200 group-hover:text-white">History</span>
                         </button>
-                        <button onClick={() => setShowEditProfile(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group">
-                            <div className="w-12 h-12 bg-green-900/30 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <span className="text-2xl">👤</span>
+                        <button onClick={() => setShowEditProfile(true)} className="glass-card bg-green-900/10 border-green-500/30 hover:bg-green-500/20 p-6 rounded-3xl flex flex-col items-center justify-center gap-4 transition-all group hover:-translate-y-1 shadow-[0_0_20px_rgba(34,197,94,0.15)]">
+                            <div className="w-14 h-14 bg-green-500/20 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(34,197,94,0.4)]">
+                                <span className="text-3xl drop-shadow-lg">👤</span>
                             </div>
-                            <span className="font-semibold text-gray-300 group-hover:text-white">My Profile</span>
+                            <span className="font-bold text-gray-200 group-hover:text-white">Profile</span>
                         </button>
-                        {/* <button onClick={() => setShowLostFoundModal(true)} className="bg-[#111] hover:bg-gray-800 border border-gray-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all group col-span-2 md:col-span-1">
-                            <div className="w-12 h-12 bg-pink-900/30 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <span className="text-2xl">🔍</span>
+                        <button onClick={() => setShowLostFoundModal(true)} className="glass-card bg-pink-900/10 border-pink-500/30 hover:bg-pink-500/20 p-6 rounded-3xl flex flex-col items-center justify-center gap-4 transition-all group hover:-translate-y-1 shadow-[0_0_20px_rgba(236,72,153,0.15)] col-span-2 md:col-span-1">
+                            <div className="w-14 h-14 bg-pink-500/20 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(236,72,153,0.4)]">
+                                <span className="text-3xl drop-shadow-lg">🔍</span>
                             </div>
-                            <span className="font-semibold text-gray-300 group-hover:text-white">Lost & Found</span>
-                        </button> */}
+                            <span className="font-bold text-gray-200 group-hover:text-white">Lost & Found</span>
+                        </button>
                     </div>
                 </div >
             )

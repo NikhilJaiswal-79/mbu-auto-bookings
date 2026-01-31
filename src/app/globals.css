@@ -26,18 +26,39 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 10px rgba(234, 179, 8, 0.2); }
-  50% { box-shadow: 0 0 20px rgba(234, 179, 8, 0.5); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(234, 179, 8, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.5);
+  }
 }
 
 .animate-fade-in {
@@ -48,6 +69,193 @@ body {
   animation: slideUp 0.6s ease-out forwards;
 }
 
-.animate-delay-100 { animation-delay: 100ms; }
-.animate-delay-200 { animation-delay: 200ms; }
-.animate-delay-300 { animation-delay: 300ms; }
+.animate-delay-100 {
+  animation-delay: 100ms;
+}
+
+.animate-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animate-delay-300 {
+  animation-delay: 300ms;
+}
+
+/* Custom Elegant Animations */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes pulse-slow {
+
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes ping-slow {
+
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 4s ease-in-out infinite;
+}
+
+.animate-ping-slow {
+  animation: ping-slow 3s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* 3D Perspective Utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.rotate-y-2 {
+  transform: rotateY(10deg);
+}
+
+.rotate-x-2 {
+  transform: rotateX(10deg);
+}
+
+/* --- NEON PREMIUM DESIGN SYSTEM --- */
+
+:root {
+  --neon-blue: #3b82f6;
+  --neon-purple: #8b5cf6;
+  --neon-pink: #ec4899;
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.03);
+}
+
+/* Base Gradient Background */
+.bg-neon-gradient {
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%);
+}
+
+.text-gradient {
+  background: linear-gradient(to right, #60a5fa, #a78bfa, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Glassmorphism */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-5px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(139, 92, 246, 0.15);
+  /* Purple Glow */
+}
+
+/* Buttons */
+.btn-neon {
+  background: linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899);
+  background-size: 200% 200%;
+  animation: gradient-xy 3s ease infinite;
+  color: white;
+  border: none;
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
+  transition: all 0.3s ease;
+}
+
+.btn-neon:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 25px rgba(236, 72, 153, 0.6);
+}
+
+.btn-neon:active {
+  transform: scale(0.98);
+}
+
+/* Animations */
+@keyframes gradient-xy {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.stagger-1 {
+  animation-delay: 100ms;
+}
+
+.stagger-2 {
+  animation-delay: 200ms;
+}
+
+.stagger-3 {
+  animation-delay: 300ms;
+}
+
+.stagger-4 {
+  animation-delay: 400ms;
+}
+
+.stagger-5 {
+  animation-delay: 500ms;
+}
+
+/* Icon Animations */
+.group:hover .icon-spin {
+  transform: rotate(15deg) scale(1.1);
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
+  transition: transform 0.3s ease, filter 0.3s ease;
+}

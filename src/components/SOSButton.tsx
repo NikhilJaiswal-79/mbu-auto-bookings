@@ -103,11 +103,12 @@ export default function SOSButton({ rideDetails }: { rideDetails?: any }) {
     return (
         <button
             onClick={handleSOS}
-            className={`w-full py-4 rounded-xl font-bold text-xl uppercase tracking-wider shadow-xl animate-pulse flex items-center justify-center gap-2 ${triggered ? "bg-gray-700 text-gray-400 cursor-not-allowed" : "bg-red-600 hover:bg-red-700 text-white"
+            className={`w-full py-5 rounded-2xl font-black text-xl uppercase tracking-widest shadow-[0_0_30px_rgba(220,38,38,0.4)] animate-pulse flex items-center justify-center gap-3 transition-all active:scale-95 ${triggered ? "bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700" : "bg-gradient-to-r from-red-600 to-rose-600 text-white hover:from-red-500 hover:to-rose-500 border border-red-500/50"
                 }`}
             disabled={triggered || loading}
         >
-            {loading ? "Sending..." : triggered ? "SOS Sent" : "🆘 Emergency SOS"}
+            <span className="text-3xl drop-shadow-md">🆘</span>
+            {loading ? "Sending Alert..." : triggered ? "SOS SENT ✅" : "Emergency SOS"}
         </button>
     );
 }
