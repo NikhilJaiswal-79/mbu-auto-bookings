@@ -269,6 +269,51 @@ export default function DriverDashboard() {
         }
     };
 
+    // Seed Fake Data Logic
+    const handleSeedData = async () => {
+        if (!user) return;
+        if (!confirm("⚠️ This will add 30 fake rides to your history for testing. Continue?")) return;
+
+        const modes = ["cash", "credits", "subscription"];
+        const locations = ["Main Gate", "Hostel Block A", "Library", "Cafeteria", "Sports Complex", "Admin Block"];
+
+        try {
+            const batchPromises = [];
+            for (let i = 0; i < 30; i++) {
+                // Random day in last 7 days
+                const daysAgo = Math.floor(Math.random() * 7);
+                const date = new Date();
+                date.setDate(date.getDate() - daysAgo);
+
+                // Random hour (mix of peak and off-peak)
+                const hour = Math.floor(Math.random() * 14) + 8; // 8 AM to 10 PM
+                date.setHours(hour, Math.floor(Math.random() * 60));
+
+                const pickup = locations[Math.floor(Math.random() * locations.length)];
+                let drop = locations[Math.floor(Math.random() * locations.length)];
+                while (drop === pickup) drop = locations[Math.floor(Math.random() * locations.length)];
+
+                batchPromises.push(addDoc(collection(db, "bookings"), {
+                    driverId: user.uid,
+                    studentId: "fake-student-id",
+                    studentName: "Test Student",
+                    pickup,
+                    drop,
+                    status: "COMPLETED",
+                    paymentMode: modes[Math.floor(Math.random() * modes.length)],
+                    tokenNumber: 900 + i,
+                    createdAt: date.toISOString(),
+                    fare: 40
+                }));
+            }
+            await Promise.all(batchPromises);
+            alert("✅ Added 30 fake rides! Check Earnings tab now.");
+        } catch (error) {
+            console.error("Error seeding data:", error);
+            alert("Failed to seed data.");
+        }
+    };
+
     // Earnings Logic
 
 
@@ -421,6 +466,9 @@ export default function DriverDashboard() {
                     <button onClick={() => setShowEditProfile(true)} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-3 rounded-2xl text-sm font-bold transition-all border border-gray-700">
                         Edit Profile
                     </button>
+                    <button onClick={handleSeedData} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-2xl text-sm font-bold transition-all border border-purple-500/50 shadow-lg shadow-purple-900/20">
+                        🛠️ Seed Data
+                    </button>
                     <button onClick={() => setShowHistory(true)} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-3 rounded-2xl text-sm font-bold transition-all border border-gray-700">
                         History
                     </button>
@@ -454,7 +502,7 @@ export default function DriverDashboard() {
                             </button>
                         </div>
 
-                        <div className="p-6 space-y-6">
+                        <div className="p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
                             {viewMode === "analysis" ? (
                                 <div className="space-y-6 animate-fade-in">
                                     {/* Today's Summary */}
