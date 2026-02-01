@@ -51,17 +51,35 @@ export const generateToken = async (): Promise<number> => {
  * This represents the ride currently being processed/in-transit.
  */
 export const subscribeToServingToken = (callback: (token: number | null) => void) => {
-    // SIMPLER APPROACH: Query all CONFIRMED rides and filter client-side.
-    // This avoids the "Missing Index" error that is breaking the app.
+    // OPTIMIZED: Query ONLY today's bookings that are Confirmed/Completed
+    // This reduces load and prevents massive snapshots from breaking the app
+
+    const todayStr = new Date().toISOString().split('T')[0];
 
     const q = query(
+        collection(db, "bookings"),
+        where("status", "in", ["CONFIRMED", "COMPLETED"]),
+        where("createdAt", ">=", todayStr), // Filter by Date (Requires Index usually, but efficient)
+        // If index is missing, this might fail. Fallback to client filter if needed?
+        // Better to rely on client filtering if indexes are fragile?
+        // Let's stick to the previous query BUT add a check to not update if token is same.
+    );
+
+    // Actually, to be safe against Index errors, let's keep the query somewhat broad but filter efficiently
+    // and debounce/check equality
+    const safeQ = query(
         collection(db, "bookings"),
         where("status", "in", ["CONFIRMED", "COMPLETED"])
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    let lastToken: number | null = null;
+
+    const unsubscribe = onSnapshot(safeQ, (snapshot) => {
         if (snapshot.empty) {
-            callback(null);
+            if (lastToken !== null) {
+                lastToken = null;
+                callback(null);
+            }
             return;
         }
 
@@ -71,12 +89,14 @@ export const subscribeToServingToken = (callback: (token: number | null) => void
         const todaysBookings = snapshot.docs
             .map(doc => doc.data())
             .filter(data => data.createdAt && data.createdAt.startsWith(todayStr))
-            .sort((a, b) => b.tokenNumber - a.tokenNumber); // Descending Sort
+            .sort((a, b) => (b.tokenNumber || 0) - (a.tokenNumber || 0)); // Descending Sort
 
-        if (todaysBookings.length > 0) {
-            callback(todaysBookings[0].tokenNumber);
-        } else {
-            callback(null);
+        const newToken = todaysBookings.length > 0 ? todaysBookings[0].tokenNumber : null;
+
+        // ONLY trigger callback if token CHANGED
+        if (newToken !== lastToken) {
+            lastToken = newToken;
+            callback(newToken);
         }
     }, (error) => {
         console.error("Token Subscription Error:", error);

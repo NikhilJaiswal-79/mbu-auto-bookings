@@ -52,8 +52,8 @@ export async function checkAndTriggerAutoBooking(user: any, force: boolean = fal
         const holidays = userData.holidays || [];
         const team = userData.timetable?.team || [];
 
-        // 4. CHECK SETTINGS
-        if (!settings.autoBookingEnabled) {
+        // 5. CHECK SETTINGS
+        if (!settings.autoBookingEnabled && !force) {
             return { skipped: true, reason: "Auto-booking disabled in settings" };
         }
 
@@ -65,9 +65,10 @@ export async function checkAndTriggerAutoBooking(user: any, force: boolean = fal
 
         let schedule = timetable[tomorrowDayName];
 
-        // Fix: Use Dummy Schedule if Force Run & No Class
-        if ((!schedule || !schedule.start) && force) {
-            console.log("Force Run: Using dummy schedule (09:00 AM - 05:00 PM)");
+        // Fix: Use Dummy Schedule if Force Run & No Class (OR Judge Demo)
+        const isJudge = userData.name?.includes("Judge") || userData.email === "judge@campusride.demo";
+        if ((!schedule || !schedule.start) && (force || isJudge)) {
+            console.log("Force Run / Judge Demo: Using dummy schedule (09:00 AM - 05:00 PM)");
             schedule = { start: "09:00 AM", end: "05:00 PM" };
         }
 

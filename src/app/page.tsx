@@ -334,7 +334,7 @@ export default function LandingPage() {
                 <textarea rows={4} suppressHydrationWarning className="w-full bg-black/40 border border-white/10 rounded-2xl p-5 text-white focus:border-blue-500 focus:bg-black/60 outline-none transition-all resize-none" placeholder="How can we help you?" />
               </div>
 
-              <button className="btn-neon w-full py-5 rounded-2xl font-black text-lg shadow-xl hover:shadow-purple-500/30">
+              <button suppressHydrationWarning className="btn-neon w-full py-5 rounded-2xl font-black text-lg shadow-xl hover:shadow-purple-500/30">
                 Send Message
               </button>
             </form>

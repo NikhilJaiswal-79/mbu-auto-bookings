@@ -47,15 +47,24 @@ function MapEvents({ onLocationSelect }: { onLocationSelect?: (lat: number, lng:
     return null;
 }
 
+// Move defaultCenter outside to ensure referential stability
+const DEFAULT_CENTER = { lat: 13.6288, lng: 79.4192 };
+
 function LocationMarker() {
     const [position, setPosition] = useState<L.LatLng | null>(null);
     const map = useMap();
 
     useEffect(() => {
+        // Locate only once on mount
         map.locate().on("locationfound", function (e) {
             setPosition(e.latlng);
             map.flyTo(e.latlng, map.getZoom());
         });
+
+        // Cleanup listener
+        return () => {
+            map.off("locationfound");
+        };
     }, [map]);
 
     return position === null ? null : (
@@ -73,31 +82,24 @@ interface MapProps {
     waypoints?: { lat: number; lng: number; label?: string }[];
 }
 
-export default function MapComponent({ className, onLocationSelect, pickup, drop, waypoints = [] }: MapProps) {
-    // Default Center: Rangampeta / MBU Area
-    const defaultCenter = { lat: 13.6288, lng: 79.4192 };
+const DEFAULT_WAYPOINTS: { lat: number; lng: number; label?: string }[] = [];
 
+export default function MapComponent({ className, onLocationSelect, pickup, drop, waypoints = DEFAULT_WAYPOINTS }: MapProps) {
+    // Stable Route State
     const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
 
     // Fetch Route when pickup and drop are available
     useEffect(() => {
+        let isMounted = true;
+
         if (pickup && drop) {
             const fetchRoute = async () => {
                 try {
-                    // OSRM Public API (Driving)
-                    // URL Format: /route/v1/driving/{lon},{lat};{lon},{lat}?overview=full&geometries=geojson
-
-                    // Construct coordinate string: pickup -> waypoints -> drop
-                    // Waypoints should be visited in order.
-                    // If waypoints exist, add them between pickup and drop.
-
                     let coordsString = `${pickup.lng},${pickup.lat}`;
-
                     if (waypoints && waypoints.length > 0) {
                         const waypointsStr = waypoints.map(wp => `${wp.lng},${wp.lat}`).join(";");
                         coordsString += `;${waypointsStr}`;
                     }
-
                     coordsString += `;${drop.lng},${drop.lat}`;
 
                     const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
@@ -105,8 +107,8 @@ export default function MapComponent({ className, onLocationSelect, pickup, drop
                     const res = await fetch(url);
                     const data = await res.json();
 
-                    if (data.routes && data.routes.length > 0) {
-                        const coords = data.routes[0].geometry.coordinates.map((c: number[]) => [c[1], c[0]]); // Swap Lon/Lat to Lat/Lon
+                    if (isMounted && data.routes && data.routes.length > 0) {
+                        const coords = data.routes[0].geometry.coordinates.map((c: number[]) => [c[1], c[0]]); // Swap Lon/Lat
                         setRouteCoords(coords);
                     }
                 } catch (error) {
@@ -117,6 +119,8 @@ export default function MapComponent({ className, onLocationSelect, pickup, drop
         } else {
             setRouteCoords([]);
         }
+
+        return () => { isMounted = false; };
     }, [pickup, drop, waypoints]);
 
     // Component to Fit Bounds
@@ -133,7 +137,7 @@ export default function MapComponent({ className, onLocationSelect, pickup, drop
 
     return (
         <MapContainer
-            center={defaultCenter}
+            center={DEFAULT_CENTER}
             zoom={13}
             scrollWheelZoom={false}
             className={`w-full h-full rounded-2xl z-0 ${className}`}
@@ -168,7 +172,7 @@ export default function MapComponent({ className, onLocationSelect, pickup, drop
             )}
 
             {!pickup && !drop && (
-                <Marker position={defaultCenter} icon={customIcon}>
+                <Marker position={DEFAULT_CENTER} icon={customIcon}>
                     <Popup>
                         MBU Campus <br /> Rangampeta
                     </Popup>

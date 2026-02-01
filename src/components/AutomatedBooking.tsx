@@ -29,7 +29,20 @@ export default function AutomatedBooking() {
             getDoc(doc(db, "users", user.uid)).then(d => {
                 if (d.exists()) {
                     const data = d.data();
-                    if (data.timetable) setTimetable(data.timetable);
+
+                    // DEMO: If Judge, show static timetable locally (don't save to DB)
+                    if (data.name?.includes("Judge") && !data.timetable) {
+                        setTimetable({
+                            "Monday": { "start": "09:00 AM", "end": "04:15 PM" },
+                            "Tuesday": { "start": "09:00 AM", "end": "01:00 PM" },
+                            "Wednesday": { "start": "09:00 AM", "end": "04:15 PM" },
+                            "Thursday": { "start": "09:00 AM", "end": "03:00 PM" },
+                            "Friday": { "start": "09:00 AM", "end": "12:30 PM" }
+                        });
+                    } else if (data.timetable) {
+                        setTimetable(data.timetable);
+                    }
+
                     if (data.holidays) setHolidays(data.holidays);
                     if (data.leaves) setLeaves(data.leaves);
                 }

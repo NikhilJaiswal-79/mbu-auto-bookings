@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { collection, query, where, onSnapshot, updateDoc, doc, orderBy, runTransaction, addDoc, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { subscribeToServingToken } from "@/lib/tokenService";
@@ -318,7 +318,7 @@ export default function DriverDashboard() {
 
 
     // Correct Logic for Mode Counts
-    const calculateEarningsV2 = () => {
+    const earnings = useMemo(() => {
         const now = new Date();
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const startOfWeek = new Date(now.setDate(now.getDate() - 7)).getTime();
@@ -428,9 +428,7 @@ export default function DriverDashboard() {
             .slice(0, 5);
 
         return { todayCash, weekCash, todayRides, peakHour, peakCount, hourCounts, hourModeCounts, topRoutes, weeklyChartData, bestDay, bestDayName };
-    };
-
-    const earnings = calculateEarningsV2(); // Use new V2
+    }, [history]); // Dependency: history
 
     // Helper to group hours
     const groupedHours = Array.from({ length: 8 }, (_, i) => {
@@ -951,9 +949,9 @@ export default function DriverDashboard() {
                 <span>Live Requests ⚡</span>
             </h2>
 
-            {/* Low Reputation Warning */}
+            {/* Low Reputation Warning - Only show if there are OPEN lost item reports */}
             {
-                (userProfile?.reputation ?? 100) < 50 && (
+                (userProfile?.reputation ?? 100) < 50 && lostReports.length > 0 && (
                     <div className="bg-orange-500/10 border border-orange-500/50 p-3 rounded-lg flex items-center gap-3 mb-4 animate-pulse">
                         <span className="text-xl">⚠️</span>
                         <p className="text-orange-300 text-sm">
